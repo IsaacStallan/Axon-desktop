@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Axon</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 120px;
+      height: 120px;
+      background: transparent;
+      overflow: hidden;
+      -webkit-app-region: drag;
+      user-select: none;
+    }
+
+    .container {
+      width: 120px;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    /* ── Outer glow ── */
+    .outer-glow {
+      position: absolute;
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      background: rgba(123, 110, 246, 0.12);
+      animation: breathe-outer 2.4s ease-in-out infinite;
+    }
+
+    /* ── Middle ring ── */
+    .middle-ring {
+      position: absolute;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: rgba(123, 110, 246, 0.35);
+      animation: breathe-middle 2.4s ease-in-out infinite;
+    }
+
+    /* ── Inner core ── */
+    .core {
+      position: relative;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: rgba(180, 170, 255, 0.95);
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+      box-shadow:
+        0 0 20px rgba(123, 110, 246, 0.7),
+        0 0 40px rgba(123, 110, 246, 0.3);
+      transition: background 0.4s ease, box-shadow 0.4s ease;
+      overflow: hidden;
+    }
+
+    .core:active { transform: scale(0.94); }
+
+    /* ── Specular highlight ── */
+    .highlight {
+      position: absolute;
+      top: 9px;
+      left: 9px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.65);
+      pointer-events: none;
+    }
+
+    /* ── Listening rings ── */
+    .ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1.5px solid rgba(123, 110, 246, 0.4);
+      animation: ring-expand 2s ease-out infinite;
+      opacity: 0;
+    }
+    .ring:nth-child(1) { width: 70px;  height: 70px;  animation-delay: 0s; }
+    .ring:nth-child(2) { width: 90px;  height: 90px;  animation-delay: 0.5s; }
+    .ring:nth-child(3) { width: 110px; height: 110px; animation-delay: 1s; }
+
+    /* ── Tooltip ── */
+    .tooltip {
+      position: fixed;
+      bottom: 128px;
+      right: 12px;
+      background: rgba(13, 13, 20, 0.92);
+      color: rgba(180, 170, 255, 0.9);
+      font-family: -apple-system, 'Segoe UI', sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(123, 110, 246, 0.25);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      white-space: nowrap;
+    }
+    .container:hover .tooltip { opacity: 1; }
+
+    /* ─── Animations ──────────────────────────────────────────────────────── */
+
+    @keyframes breathe-outer {
+      0%, 100% { transform: scale(1.00); opacity: 0.12; }
+      50%       { transform: scale(1.08); opacity: 0.22; }
+    }
+
+    @keyframes breathe-middle {
+      0%, 100% { transform: scale(1.00); }
+      50%       { transform: scale(1.05); }
+    }
+
+    @keyframes ring-expand {
+      0%   { transform: scale(0.6); opacity: 0.6; }
+      100% { transform: scale(1.4); opacity: 0.0; }
+    }
+
+    @keyframes urgent-pulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.8), 0 0 40px rgba(239, 68, 68, 0.4); }
+      50%       { box-shadow: 0 0 35px rgba(239, 68, 68, 1.0), 0 0 60px rgba(239, 68, 68, 0.6); }
+    }
+
+    @keyframes thinking-spin {
+      0%   { box-shadow: 0 0 20px rgba(250, 200, 80, 0.7), 0 0 40px rgba(250, 200, 80, 0.3); }
+      50%  { box-shadow: 0 0 30px rgba(250, 200, 80, 1.0), 0 0 55px rgba(250, 200, 80, 0.5); }
+      100% { box-shadow: 0 0 20px rgba(250, 200, 80, 0.7), 0 0 40px rgba(250, 200, 80, 0.3); }
+    }
+
+    /* ─── State modifiers ─────────────────────────────────────────────────── */
+
+    body.listening .core {
+      background: rgba(45, 212, 191, 0.95);
+      box-shadow: 0 0 20px rgba(45, 212, 191, 0.8), 0 0 40px rgba(45, 212, 191, 0.4);
+    }
+    body.listening .outer-glow {
+      background: rgba(45, 212, 191, 0.10);
+    }
+    body.listening .middle-ring {
+      background: rgba(45, 212, 191, 0.30);
+    }
+    body.listening .ring {
+      border-color: rgba(45, 212, 191, 0.5);
+    }
+
+    body.speaking .core {
+      background: rgba(200, 190, 255, 0.98);
+      animation: breathe-middle 0.8s ease-in-out infinite;
+      box-shadow: 0 0 25px rgba(123, 110, 246, 0.9), 0 0 50px rgba(123, 110, 246, 0.5);
+    }
+
+    body.thinking .core {
+      background: rgba(250, 200, 80, 0.90);
+      animation: thinking-spin 1.2s ease-in-out infinite;
+    }
+    body.thinking .outer-glow { background: rgba(250, 200, 80, 0.10); }
+    body.thinking .middle-ring { background: rgba(250, 200, 80, 0.28); }
+
+    body.urgent .core {
+      background: rgba(239, 68, 68, 0.95);
+      animation: urgent-pulse 0.7s ease-in-out infinite;
+    }
+    body.urgent .outer-glow { background: rgba(239, 68, 68, 0.14); }
+    body.urgent .middle-ring { background: rgba(239, 68, 68, 0.35); }
+  </style>
+</head>
+<body>
+  <div class="container" id="container">
+    <!-- Listening rings (only visible in listening state) -->
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="ring"></div>
+
+    <!-- Layers -->
+    <div class="outer-glow"></div>
+    <div class="middle-ring"></div>
+
+    <div class="core" id="core">
+      <div class="highlight"></div>
+    </div>
+
+    <div class="tooltip">Axon is watching</div>
+  </div>
+
+  <script src="orb_window.js"></script>
+</body>
+</html>
