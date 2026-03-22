@@ -92,7 +92,7 @@ let currentStart: number   = Date.now();
 
 export function startWindowMonitor(): void {
   poll(); // immediate first sample
-  setInterval(poll, 30_000);
+  setInterval(poll, 15_000); // 15-second resolution keeps context fresh
 }
 
 async function poll(): Promise<void> {

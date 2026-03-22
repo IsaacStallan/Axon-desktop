@@ -13,7 +13,7 @@ dotenv.config();
 
 import { startWindowMonitor, getActivitySummary, getCurrentApp, getProductivityScore } from './services/windowMonitor';
 import { startDecisionLoop } from './services/decisionEngine';
-import { startVoiceListener } from './services/voiceListener';
+import { startVoiceListener, stopVoiceListener } from './services/voiceListener';
 import { triggerConversation, stopConversation } from './services/conversationService';
 
 // ── Keep single instance ────────────────────────────────────────────────────
@@ -106,20 +106,45 @@ export function setOrbState(state: 'idle' | 'listening' | 'speaking' | 'thinking
   orbWindow?.webContents.send('orb:state', state);
 }
 
+// ── Wake-word → conversation lifecycle ──────────────────────────────────────
+// The voice listener and conversation loop both call SoX to record from the
+// mic.  Running them simultaneously splits the audio stream and produces
+// fragmented, echoed transcripts.  The fix: stop the listener before the
+// conversation starts and restart it cleanly after the conversation ends.
+
+function beginConversation(): void {
+  if (isConversing) return;
+  isConversing = true;
+  stopVoiceListener();          // silence the wake-word loop first
+  setOrbState('listening');
+  console.log('[Main] conversation started');
+
+  triggerConversation().finally(() => {
+    isConversing = false;
+    setOrbState('idle');
+    console.log('[Main] conversation ended — restarting wake-word listener');
+    startWakeWordListener();    // resume listening for the next wake word
+  });
+}
+
+function startWakeWordListener(): void {
+  startVoiceListener(
+    () => beginConversation(),  // called when "hey axon" is detected
+    setOrbState,
+  );
+}
+
 // ── IPC: renderer signals ───────────────────────────────────────────────────
 ipcMain.on('orb:tap', () => {
   console.log('[Main] orb tapped');
   if (isConversing) {
-    isConversing = false;
+    // Tap while talking → end conversation, restart wake-word listener
     stopConversation();
+    isConversing = false;
     setOrbState('idle');
+    startWakeWordListener();
   } else {
-    isConversing = true;
-    setOrbState('listening');
-    triggerConversation().finally(() => {
-      isConversing = false;
-      setOrbState('idle');
-    });
+    beginConversation();
   }
 });
 
@@ -138,20 +163,7 @@ app.on('ready', () => {
   // Start background services
   startWindowMonitor();
   startDecisionLoop(setOrbState);
-  startVoiceListener(
-    // Wake word detected → start conversation
-    () => {
-      if (!isConversing) {
-        isConversing = true;
-        setOrbState('listening');
-        triggerConversation().finally(() => {
-          isConversing = false;
-          setOrbState('idle');
-        });
-      }
-    },
-    setOrbState
-  );
+  startWakeWordListener();
 
   console.log('[Main] Axon desktop started');
 });

@@ -1,4 +1,4 @@
-import { transcribe } from './whisperService';
+import { transcribe, killCurrentRecording } from './whisperService';
 
 type StateCallback = (state: 'idle' | 'listening' | 'speaking' | 'thinking' | 'urgent') => void;
 
@@ -17,6 +17,35 @@ const WAKE_PATTERNS = [
   'ax on',
   'jackson',
 ];
+
+// Phrases Whisper generates when there is silence or background noise
+// rather than real speech.  Filtering these out prevents phantom wake-words.
+const HALLUCINATION_PHRASES = [
+  'thank you for watching',
+  'thanks for watching',
+  'subscribe',
+  'beadaholique',
+  'fema.gov',
+  'zeoranger',
+  'subs by',
+  'for more information visit',
+  'www.',
+  '.com',
+  '.gov',
+  '.co.uk',
+];
+
+function isHallucination(transcript: string): boolean {
+  const lower = transcript.toLowerCase();
+  return HALLUCINATION_PHRASES.some(h => lower.includes(h));
+}
+
+function isJunk(transcript: string): boolean {
+  if (isHallucination(transcript)) return true;
+  // Single-word transcripts are almost always noise or mis-fires
+  if (transcript.trim().split(/\s+/).length < 2) return true;
+  return false;
+}
 
 function isWakeWord(transcript: string): boolean {
   // Confidence filter: ignore noise artifacts shorter than 3 characters
@@ -38,6 +67,9 @@ export function startVoiceListener(
 
 export function stopVoiceListener(): void {
   stopFlag = true;
+  // Kill the currently running SoX chunk immediately so the audio device
+  // is released before the conversation's own SoX tries to open it.
+  killCurrentRecording();
 }
 
 // ── Loop ──────────────────────────────────────────────────────────────────────
@@ -52,6 +84,11 @@ async function loop(onWakeWord: () => void, setOrbState: StateCallback): Promise
 
       if (!transcript) continue;
       console.log('[VoiceListener] heard:', transcript);
+
+      if (isJunk(transcript)) {
+        console.log('[VoiceListener] junk/hallucination — skipping');
+        continue;
+      }
 
       if (isWakeWord(transcript) && !stopFlag) {
         console.log('[VoiceListener] WAKE WORD DETECTED:', transcript);

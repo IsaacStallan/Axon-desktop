@@ -42,9 +42,21 @@ async function shouldIntervene(): Promise<{ intervene: boolean; message: string 
     const block = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
     if (!block) return null;
 
-    return JSON.parse(block.text.trim());
+    // Strip markdown code fences Claude sometimes wraps around JSON responses
+    const cleaned = block.text.trim()
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i,     '')
+      .replace(/```\s*$/i,     '')
+      .trim();
+
+    try {
+      return JSON.parse(cleaned);
+    } catch (parseErr) {
+      console.warn('[DecisionEngine] JSON parse failed. Raw response:', block.text.trim());
+      return null;
+    }
   } catch (e) {
-    console.warn('[DecisionEngine] error:', e);
+    console.warn('[DecisionEngine] API error:', e);
     return null;
   }
 }
