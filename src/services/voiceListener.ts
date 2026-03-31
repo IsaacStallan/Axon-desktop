@@ -1,25 +1,13 @@
+import WebSocket from 'ws';
 import { spawn, exec } from 'child_process';
-import path from 'path';
-import os from 'os';
-import fs from 'fs';
-import { transcribeFile } from '../utils/transcribeFile';
+import { setPendingUtterance } from '../utils/utteranceQueue';
 
-console.log('[VoiceListener] module loaded - watchdogFired build confirmed');
+console.log('[VoiceListener] module loaded');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const SOX_PATH = process.env.SOX_PATH ?? 'C:\\Program Files (x86)\\sox-14-4-2\\sox.exe';
-
-// Silence threshold for the SoX silence effect, expressed as a percentage of
-// maximum amplitude (e.g. "2%").  Values that are too low will trigger on
-// background noise; values that are too high will clip quiet speech.
-// Run `npx ts-node src/utils/calibrate.ts` to measure your mic's noise floor
-// and get a personalised recommendation.
-const SILENCE_THRESHOLD = process.env.AXON_SILENCE_THRESHOLD ?? '25%';
-
-// Hard upper bound on recording length.  SoX is force-killed when this is
-// reached so the audio device is never held open indefinitely.
-const MAX_RECORD_SECS = 30;
+const SOX_PATH     = process.env.SOX_PATH ?? 'C:\\Program Files (x86)\\sox-14-4-2\\sox.exe';
+const REALTIME_URL = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,147 +15,47 @@ type StateCallback = (state: 'idle' | 'listening' | 'speaking' | 'thinking' | 'u
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
-let stopFlag = false;
-let currentSoxPid: number | undefined;
+let stopFlag   = false;
+let activeSoxPid: number | undefined;
+let activeWs:    WebSocket | undefined;
 
-// ── Wake-word detection ───────────────────────────────────────────────────────
+// ── Wake-word patterns ────────────────────────────────────────────────────────
 // Fuzzy matching covers common mishearings of "hey axon" by Windows SR:
 //   "action"  — SR mishears the 'x' as 'ction'
 //   "ax on"   — SR splits the word
 //   "Jackson" — SR maps the sound to a known name
 
-const WAKE_PATTERNS = [
-  'axon',
-  'hey ax',
-  'action',
-  'ax on',
-  'jackson',
-];
-
-// Phrases Whisper generates when there is silence or background noise
-// rather than real speech.  Filtering these out prevents phantom wake-words.
-const HALLUCINATION_PHRASES = [
-  'thank you for watching',
-  'thanks for watching',
-  'subscribe',
-  'beadaholique',
-  'fema.gov',
-  'zeoranger',
-  'subs by',
-  'for more information visit',
-  'www.',
-  '.com',
-  '.gov',
-  '.co.uk',
-];
-
-function isHallucination(transcript: string): boolean {
-  const lower = transcript.toLowerCase();
-  return HALLUCINATION_PHRASES.some(h => lower.includes(h));
-}
-
-function isJunk(transcript: string): boolean {
-  if (isHallucination(transcript)) return true;
-  // Single-word transcripts are almost always noise or mis-fires
-  if (transcript.trim().split(/\s+/).length < 2) return true;
-  return false;
-}
+const WAKE_PATTERNS = ['axon', 'hey ax', 'action', 'ax on', 'jackson'];
 
 function isWakeWord(transcript: string): boolean {
-  // Confidence filter: ignore noise artifacts shorter than 3 characters
   if (transcript.trim().length < 3) return false;
-
   const t = transcript.toLowerCase();
   return WAKE_PATTERNS.some(p => t.includes(p));
 }
 
-// ── SoX process management ────────────────────────────────────────────────────
-
-function killListenerRecording(): void {
-  if (!currentSoxPid) return;
-  const pid = currentSoxPid;
-  currentSoxPid = undefined;
-  console.log(`[VoiceListener] killing SoX PID ${pid}`);
-  // taskkill /F /T kills the process and its entire child tree on Windows
-  exec(`taskkill /F /T /PID ${pid}`, () => {});
+/**
+ * Returns any text that follows the wake word in the same utterance.
+ * e.g. "Hey axon, what time is it?" → "what time is it?"
+ * Used to seed the utterance queue so the first conversation turn is instant.
+ */
+function extractCommandAfterWakeWord(transcript: string): string {
+  const lower = transcript.toLowerCase();
+  for (const pattern of WAKE_PATTERNS) {
+    const idx = lower.indexOf(pattern);
+    if (idx !== -1) {
+      return transcript.slice(idx + pattern.length).replace(/^[\s,]+/, '').trim();
+    }
+  }
+  return '';
 }
 
-// ── Silence-detected recording ────────────────────────────────────────────────
+// ── SoX management ────────────────────────────────────────────────────────────
 
-/**
- * Records audio into a temp WAV file using the SoX silence effect.
- *
- * SoX starts writing once audio exceeds SILENCE_THRESHOLD for 0.3 s, and
- * stops once audio falls back below SILENCE_THRESHOLD for 1.5 s.  A watchdog
- * timer force-kills SoX after MAX_RECORD_SECS so the device is never blocked
- * if the speaker doesn't pause naturally (e.g. continuous ambient sound).
- *
- * Returns the path to the recorded WAV file.  The caller is responsible for
- * deleting it after transcription.
- */
-function recordUntilSilence(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const outPath = path.join(os.tmpdir(), `axon_${Date.now()}.wav`);
-
-    const proc = spawn(
-      SOX_PATH,
-      [
-        '-t', 'waveaudio', 'default',
-        '-r', '16000',
-        '-c', '1',
-        '-b', '16',
-        outPath,
-        // Group 1: begin recording once audio exceeds threshold for 0.3 s
-        // Group 2: stop recording once audio drops below threshold for 1.5 s
-        'silence', '1', '0.3', SILENCE_THRESHOLD,
-                   '1', '1.5', SILENCE_THRESHOLD,
-      ],
-      { shell: false },
-    );
-
-    currentSoxPid = proc.pid;
-
-    // Watchdog: force-stop the recording if silence detection never fires
-    let watchdogFired = false;
-    const watchdog = setTimeout(() => {
-      watchdogFired = true;
-      console.log('[VoiceListener] max duration reached — stopping recording');
-      killListenerRecording();
-    }, MAX_RECORD_SECS * 1000);
-
-    const stderrChunks: Buffer[] = [];
-    proc.stderr?.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
-
-    proc.on('close', (code) => {
-      clearTimeout(watchdog);
-      if (currentSoxPid === proc.pid) currentSoxPid = undefined;
-
-      const errText = Buffer.concat(stderrChunks).toString().trim();
-      if (errText) console.warn('[VoiceListener] SoX stderr:', errText);
-
-      // Watchdog kill (Windows taskkill → exit code 1) and natural silence-
-      // detection exit (code 0) are both valid — audio captured so far is good.
-      // Only reject on unexpected non-zero codes we didn't cause ourselves.
-      if (!watchdogFired && code !== 0 && code !== null) {
-        reject(new Error(`SoX exited with code ${code}`));
-        return;
-      }
-
-      try {
-        const stats = fs.statSync(outPath);
-        console.log('[VoiceListener] recorded file size:', stats.size, 'bytes');
-        resolve(outPath);
-      } catch {
-        reject(new Error('SoX output file missing'));
-      }
-    });
-
-    proc.on('error', (err) => {
-      clearTimeout(watchdog);
-      if (currentSoxPid === proc.pid) currentSoxPid = undefined;
-      reject(err);
-    });
-  });
+function killSox(pid: number | undefined): void {
+  if (!pid) return;
+  if (activeSoxPid === pid) activeSoxPid = undefined;
+  console.log(`[VoiceListener] killing SoX PID ${pid}`);
+  exec(`taskkill /F /T /PID ${pid}`, () => {});
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -177,52 +65,223 @@ export function startVoiceListener(
   setOrbState: StateCallback,
 ): void {
   stopFlag = false;
-  loop(onWakeWord, setOrbState);
+  void sessionLoop(onWakeWord, setOrbState);
 }
 
 export function stopVoiceListener(): void {
   stopFlag = true;
-  // Kill the currently running SoX recording immediately so the audio device
-  // is released before the conversation's own SoX tries to open it.
-  killListenerRecording();
+  try { activeWs?.close(); } catch { /* already closed */ }
+  activeWs = undefined;
+  killSox(activeSoxPid);
 }
 
-// ── Loop ──────────────────────────────────────────────────────────────────────
+// ── Session loop (reconnects on errors) ───────────────────────────────────────
 
-async function loop(onWakeWord: () => void, setOrbState: StateCallback): Promise<void> {
-  console.log('[VoiceListener] wake-word loop started (Whisper + silence detection)');
-  console.log(`[VoiceListener] silence threshold: ${SILENCE_THRESHOLD}, max duration: ${MAX_RECORD_SECS}s`);
+async function sessionLoop(
+  onWakeWord:  () => void,
+  setOrbState: StateCallback,
+): Promise<void> {
+  console.log('[VoiceListener] wake-word loop started (Realtime API)');
 
   while (!stopFlag) {
     try {
-      const filePath = await recordUntilSilence();
-
-      let transcript = '';
-      try {
-        transcript = await transcribeFile(filePath);
-      } finally {
-        fs.unlink(filePath, () => {}); // always clean up temp file
-      }
-
-      if (!transcript) continue;
-      console.log('[VoiceListener] heard:', transcript);
-
-      if (isJunk(transcript)) {
-        console.log('[VoiceListener] junk/hallucination — skipping');
-        continue;
-      }
-
-      if (isWakeWord(transcript) && !stopFlag) {
-        console.log('[VoiceListener] WAKE WORD DETECTED:', transcript);
-        onWakeWord();
-        // Pause the wake-word loop while the conversation is active
-        await new Promise<void>(r => setTimeout(r, 30_000));
-      }
+      await runSession(onWakeWord);
     } catch (e) {
-      console.warn('[VoiceListener] error:', e);
-      await new Promise<void>(r => setTimeout(r, 2000));
+      if (stopFlag) break;
+      console.warn('[VoiceListener] session error — reconnecting in 2 s:', e);
+      await sleep(2000);
     }
   }
 
   console.log('[VoiceListener] loop stopped');
+}
+
+// ── Single Realtime session ───────────────────────────────────────────────────
+
+/**
+ * Opens one WebSocket session + SoX process.
+ * Streams raw PCM from SoX stdout → Realtime API as base64 chunks.
+ * Server-side VAD segments the stream; each completed segment produces a
+ * conversation.item.input_audio_transcription.completed event which we check
+ * for the wake word.
+ *
+ * Resolves when the wake word is detected (stopFlag already set to true) or
+ * when stopVoiceListener() closes the WebSocket.
+ * Rejects on unexpected network / process errors so sessionLoop can reconnect.
+ */
+function runSession(onWakeWord: () => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const apiKey = process.env.OPENAI_API_KEY ?? '';
+
+    // ── WebSocket ───────────────────────────────────────────────────────────
+
+    const ws = new WebSocket(REALTIME_URL, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'OpenAI-Beta':   'realtime=v1',
+      },
+    });
+
+    activeWs = ws;
+
+    // ── SoX — stream raw PCM16 at 24 kHz to stdout ─────────────────────────
+    // The Realtime API expects pcm16 at 24 000 Hz, 1 channel, little-endian.
+
+    const sox = spawn(
+      SOX_PATH,
+      [
+        '-t', 'waveaudio', 'default',
+        '-r', '24000',
+        '-c', '1',
+        '-b', '16',
+        '-e', 'signed-integer',
+        '-t', 'raw', '-',          // output raw PCM to stdout
+      ],
+      { shell: false },
+    );
+
+    const soxPid = sox.pid;
+    activeSoxPid = soxPid;
+
+    // ── Settle helpers ──────────────────────────────────────────────────────
+
+    let settled = false;
+
+    function settle(fn: () => void): void {
+      if (!settled) { settled = true; fn(); }
+    }
+
+    // ── Audio buffering ─────────────────────────────────────────────────────
+    // Buffer SoX output until the WS session is confirmed ready, then stream
+    // directly.  This avoids losing the first ~200 ms of audio during setup.
+
+    let wsReady   = false;
+    let audioQueue: Buffer[] = [];
+
+    function sendChunk(chunk: Buffer): void {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type:  'input_audio_buffer.append',
+          audio: chunk.toString('base64'),
+        }));
+      }
+    }
+
+    sox.stdout?.on('data', (chunk: Buffer) => {
+      if (stopFlag) return;
+      if (!wsReady) { audioQueue.push(chunk); return; }
+      sendChunk(chunk);
+    });
+
+    sox.stderr?.on('data', (chunk: Buffer) => {
+      const msg = chunk.toString().trim();
+      if (msg) console.warn('[VoiceListener] SoX:', msg);
+    });
+
+    sox.on('close', (code) => {
+      if (activeSoxPid === soxPid) activeSoxPid = undefined;
+      if (!stopFlag) {
+        console.warn('[VoiceListener] SoX exited unexpectedly, code:', code);
+        ws.close();
+      }
+    });
+
+    sox.on('error', (err) => {
+      console.warn('[VoiceListener] SoX spawn error:', err.message);
+      ws.close();
+    });
+
+    // ── WebSocket event handlers ────────────────────────────────────────────
+
+    ws.on('open', () => {
+      ws.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+          modalities:  ['text'],
+          input_audio_format: 'pcm16',
+          input_audio_transcription: { model: 'whisper-1' },
+          turn_detection: {
+            type:                  'server_vad',
+            threshold:             0.5,
+            prefix_padding_ms:     300,
+            silence_duration_ms:   1500,
+          },
+        },
+      }));
+    });
+
+    ws.on('message', (raw: WebSocket.RawData) => {
+      if (stopFlag) return;
+
+      let event: { type: string; [key: string]: unknown };
+      try {
+        event = JSON.parse(raw.toString()) as typeof event;
+      } catch {
+        return;
+      }
+
+      // Session configured — flush buffered audio and switch to direct streaming
+      if (event.type === 'session.updated') {
+        wsReady = true;
+        console.log('[VoiceListener] Realtime session ready — streaming audio');
+        for (const chunk of audioQueue) sendChunk(chunk);
+        audioQueue = [];
+      }
+
+      // Each server-VAD speech segment produces this event
+      if (event.type === 'conversation.item.input_audio_transcription.completed') {
+        const transcript = (event.transcript as string | undefined)?.trim() ?? '';
+        if (!transcript) return;
+
+        console.log('[VoiceListener] heard:', transcript);
+
+        if (isWakeWord(transcript)) {
+          console.log('[VoiceListener] WAKE WORD DETECTED:', transcript);
+
+          // If the user included a command after the wake word, queue it for
+          // the first conversationService transcribe() call.
+          const command = extractCommandAfterWakeWord(transcript);
+          if (command.length > 3) {
+            console.log('[VoiceListener] queuing post-wake command:', command);
+            setPendingUtterance(command);
+          }
+
+          stopFlag = true;
+          killSox(soxPid);
+          try { ws.close(); } catch { /* already closed */ }
+          onWakeWord();
+          settle(() => resolve());
+        }
+      }
+
+      if (event.type === 'error') {
+        const msg = (event.error as { message?: string } | undefined)?.message
+          ?? JSON.stringify(event.error);
+        console.warn('[VoiceListener] Realtime API error:', msg);
+      }
+    });
+
+    ws.on('close', (code, reason) => {
+      if (activeWs === ws) activeWs = undefined;
+      killSox(soxPid);
+      if (stopFlag) {
+        settle(() => resolve());
+      } else {
+        settle(() => reject(new Error(
+          `WebSocket closed unexpectedly: ${code} ${reason.toString()}`,
+        )));
+      }
+    });
+
+    ws.on('error', (err) => {
+      killSox(soxPid);
+      settle(() => reject(err));
+    });
+  });
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(r => setTimeout(r, ms));
 }

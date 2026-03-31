@@ -19,7 +19,8 @@
     "dotenv": "^16.5.0",
     "elevenlabs": "^1.57.0",
     "openai": "^6.32.0",
-    "play-sound": "^1.1.6"
+    "play-sound": "^1.1.6",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.8.0",
@@ -28,6 +29,7 @@
     "@electron-forge/plugin-auto-unpack-natives": "^7.8.0",
     "@electron-forge/plugin-webpack": "^7.8.0",
     "@types/node": "^22.15.3",
+    "@types/ws": "^8.5.14",
     "@types/play-sound": "^1.1.2",
     "@typescript-eslint/eslint-plugin": "^5.0.0",
     "@typescript-eslint/parser": "^5.0.0",
