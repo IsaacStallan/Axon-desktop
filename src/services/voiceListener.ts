@@ -4,6 +4,8 @@ import os from 'os';
 import fs from 'fs';
 import { transcribeFile } from '../utils/transcribeFile';
 
+console.log('[VoiceListener] module loaded - watchdogFired build confirmed');
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const SOX_PATH = process.env.SOX_PATH ?? 'C:\\Program Files (x86)\\sox-14-4-2\\sox.exe';
