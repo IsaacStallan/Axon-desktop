@@ -161,6 +161,7 @@ function runSession(onWakeWord: () => void): Promise<void> {
 
     function sendChunk(chunk: Buffer): void {
       if (ws.readyState === WebSocket.OPEN) {
+        console.log('[VoiceListener] sending audio chunk, bytes:', chunk.length);
         ws.send(JSON.stringify({
           type:  'input_audio_buffer.append',
           audio: chunk.toString('base64'),
@@ -211,8 +212,18 @@ function runSession(onWakeWord: () => void): Promise<void> {
       }));
     });
 
+    // DEBUG: warn if no messages arrive within 10 s of streaming starting
+    let receivedAnyMessage = false;
+    const noMessageTimer = setTimeout(() => {
+      if (!receivedAnyMessage && !stopFlag) {
+        console.warn('[VoiceListener] WARNING: no messages received from Realtime API after 10s');
+      }
+    }, 10_000);
+
     ws.on('message', (raw: WebSocket.RawData) => {
       if (stopFlag) return;
+      receivedAnyMessage = true;
+      console.log('[VoiceListener] ws message:', raw.toString().slice(0, 200));
 
       let event: { type: string; [key: string]: unknown };
       try {
@@ -263,6 +274,7 @@ function runSession(onWakeWord: () => void): Promise<void> {
     });
 
     ws.on('close', (code, reason) => {
+      clearTimeout(noMessageTimer);
       if (activeWs === ws) activeWs = undefined;
       killSox(soxPid);
       if (stopFlag) {
