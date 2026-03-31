@@ -135,6 +135,7 @@ function runSession(onWakeWord: () => void): Promise<void> {
         '-c', '1',
         '-b', '16',
         '-e', 'signed-integer',
+        'vol', '0.5',              // halve input gain to reduce clipping
         '-t', 'raw', '-',          // output raw PCM to stdout
       ],
       { shell: false },
@@ -202,7 +203,7 @@ function runSession(onWakeWord: () => void): Promise<void> {
           input_audio_transcription: { model: 'whisper-1' },
           turn_detection: {
             type:                  'server_vad',
-            threshold:             0.7,
+            threshold:             0.5,
             prefix_padding_ms:     500,
             silence_duration_ms:   2000,
           },
