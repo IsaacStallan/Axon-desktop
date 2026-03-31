@@ -13,7 +13,7 @@ const SOX_PATH = process.env.SOX_PATH ?? 'C:\\Program Files (x86)\\sox-14-4-2\\s
 // background noise; values that are too high will clip quiet speech.
 // Run `npx ts-node src/utils/calibrate.ts` to measure your mic's noise floor
 // and get a personalised recommendation.
-const SILENCE_THRESHOLD = process.env.AXON_SILENCE_THRESHOLD ?? '2%';
+const SILENCE_THRESHOLD = process.env.AXON_SILENCE_THRESHOLD ?? '25%';
 
 // Hard upper bound on recording length.  SoX is force-killed when this is
 // reached so the audio device is never held open indefinitely.
@@ -126,7 +126,9 @@ function recordUntilSilence(): Promise<string> {
     currentSoxPid = proc.pid;
 
     // Watchdog: force-stop the recording if silence detection never fires
+    let watchdogFired = false;
     const watchdog = setTimeout(() => {
+      watchdogFired = true;
       console.log('[VoiceListener] max duration reached — stopping recording');
       killListenerRecording();
     }, MAX_RECORD_SECS * 1000);
@@ -141,9 +143,10 @@ function recordUntilSilence(): Promise<string> {
       const errText = Buffer.concat(stderrChunks).toString().trim();
       if (errText) console.warn('[VoiceListener] SoX stderr:', errText);
 
-      // null = process was killed (watchdog or stopVoiceListener) — treat as
-      // normal end so we still attempt to transcribe whatever was captured.
-      if (code !== 0 && code !== null) {
+      // Watchdog kill (Windows taskkill → exit code 1) and natural silence-
+      // detection exit (code 0) are both valid — audio captured so far is good.
+      // Only reject on unexpected non-zero codes we didn't cause ourselves.
+      if (!watchdogFired && code !== 0 && code !== null) {
         reject(new Error(`SoX exited with code ${code}`));
         return;
       }

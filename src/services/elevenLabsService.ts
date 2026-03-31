@@ -72,24 +72,27 @@ export async function speak(text: string): Promise<void> {
       const timer = setTimeout(() => {
         console.warn('[ElevenLabs] playback hard cap — killing SoX');
         sox.kill();
-        resolve();
+        // close event will fire after kill and call resolve()
       }, 60_000);
 
-      sox.on('close', () => { clearTimeout(timer); resolve(); });
-      sox.on('error', (err) => {
-        clearTimeout(timer);
-        console.warn('[ElevenLabs] SoX error:', err.message);
-        resolve();
-      });
-
-      // Suppress normal SoX progress output; surface only real warnings
+      // Suppress normal SoX progress output; surface only real warnings.
+      // Single close handler — resolves the promise once SoX fully exits.
       const stderrBuf: Buffer[] = [];
       sox.stderr?.on('data', (b: Buffer) => stderrBuf.push(b));
       sox.on('close', () => {
+        clearTimeout(timer);
         const msg = Buffer.concat(stderrBuf).toString().trim();
         if (msg && !msg.startsWith('Input File') && !msg.includes('WARN rate') && !msg.includes('WARN dither')) {
           console.warn('[ElevenLabs] SoX stderr:', msg);
         }
+        resolve();
+      });
+
+      // SoX process error (e.g. binary not found) — close won't fire
+      sox.on('error', (err) => {
+        clearTimeout(timer);
+        console.warn('[ElevenLabs] SoX error:', err.message);
+        resolve();
       });
 
       // Pipe ElevenLabs stream → SoX stdin
@@ -98,10 +101,10 @@ export async function speak(text: string): Promise<void> {
 
       (response.data as NodeJS.ReadableStream).on('error', (err: Error) => {
         console.warn('[ElevenLabs] stream error:', err.message);
+        // Only close stdin — do NOT kill SoX.  SoX drains its internal audio
+        // buffer and exits naturally, then the close handler calls resolve().
+        // Killing SoX here would clip any audio already buffered for playback.
         sox.stdin?.destroy();
-        sox.kill();
-        clearTimeout(timer);
-        resolve();
       });
     });
   } catch (e) {
