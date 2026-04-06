@@ -6,19 +6,49 @@ import {
   ipcMain,
   screen,
   nativeImage,
+  systemPreferences,
+  session,
+  powerMonitor,
 } from 'electron';
 import path from 'path';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-import { startWindowMonitor, getActivitySummary, getCurrentApp, getProductivityScore } from './services/windowMonitor';
-import { startDecisionLoop } from './services/decisionEngine';
-import { startVoiceListener, stopVoiceListener } from './services/voiceListener';
-import { triggerConversation, stopConversation } from './services/conversationService';
+console.error('[Main] loading windowMonitor');
+const { startWindowMonitor, getActivitySummary, getCurrentApp, getProductivityScore } = require('./services/windowMonitor');
+console.error('[Main] loading silentMonitor');
+const { startSilentMonitor } = require('./services/silentMonitor');
+console.error('[Main] loading decisionEngine');
+const { startDecisionLoop } = require('./services/decisionEngine');
+console.error('[Main] loading voiceListener');
+const { startVoiceListener, stopVoiceListener, setOrbWindow } = require('./services/voiceListener');
+console.error('[Main] loading conversationService');
+const { triggerConversation, stopConversation } = require('./services/conversationService');
+console.error('[Main] loading briefingService');
+const { startBriefingService } = require('./services/briefingService');
+console.error('[Main] all imports done');
+
+// ── Global error handlers ─────────────────────────────────────────────────────
+// Registered as early as possible (first executable lines after imports).
+// In TypeScript/ESM, import declarations are syntactically required to precede
+// all executable statements, so this is the earliest achievable position.
+
+process.on('uncaughtException', (err) => {
+  console.error('[Main] UNCAUGHT EXCEPTION:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Main] UNHANDLED REJECTION:', reason);
+});
 
 // ── Keep single instance ────────────────────────────────────────────────────
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) { app.quit(); }
+// Skip in dev: electron-forge restarts frequently and orphaned dev processes
+// silently hold the lock, causing new starts to quit with no output.
+const gotLock = app.isPackaged ? app.requestSingleInstanceLock() : true;
+if (!gotLock) {
+  console.error('[Main] another instance is already running — quitting');
+  app.quit();
+}
 
 // ── Globals ─────────────────────────────────────────────────────────────────
 let orbWindow: BrowserWindow | null = null;
@@ -53,6 +83,11 @@ function createOrbWindow(): BrowserWindow {
 
   win.loadURL(ORB_WINDOW_WEBPACK_ENTRY);
   win.setAlwaysOnTop(true, 'screen-saver');
+
+  // Forward renderer console messages to main process stdout
+  win.webContents.on('console-message', (_event, _level, message) => {
+    console.log('[Renderer]', message);
+  });
 
   // Never actually close — just hide
   win.on('close', (e) => {
@@ -153,19 +188,95 @@ ipcMain.on('orb:ready', () => {
   setOrbState('idle');
 });
 
+// ── Second-instance focus (production only) ──────────────────────────────────
+app.on('second-instance', () => {
+  console.error('[Main] second instance launched — focusing existing window');
+  if (orbWindow) {
+    if (!orbWindow.isVisible()) orbWindow.show();
+    orbWindow.focus();
+  }
+});
+
 // ── App lifecycle ────────────────────────────────────────────────────────────
 app.on('ready', () => {
-  app.dock?.hide(); // macOS — no dock icon
+  try {
+    console.log('[Main] app ready');
+    app.dock?.hide(); // macOS — no dock icon
 
-  orbWindow = createOrbWindow();
-  tray      = createTray();
+    // ── Monitor-only mode ──────────────────────────────────────────────────
+    // DEVICE_ROLE=monitor: run windowMonitor + Supabase heartbeat only.
+    // No orb window, no voice, no conversation pipeline.
+    if (process.env.DEVICE_ROLE === 'monitor') {
+      tray = createTray();  // tray keeps the process alive and allows quit
+      startSilentMonitor();
+      console.log('[Main] running in monitor mode');
+      return;
+    }
 
-  // Start background services
-  startWindowMonitor();
-  startDecisionLoop(setOrbState);
-  startWakeWordListener();
+    // ── Full Axon mode (default) ───────────────────────────────────────────
 
-  console.log('[Main] Axon desktop started');
+    if (process.platform === 'darwin') {
+      systemPreferences.askForMediaAccess('microphone').then((granted: boolean) => {
+        if (!granted) {
+          console.error('[Main] Microphone access denied by macOS');
+        } else {
+          console.log('[Main] Microphone access granted');
+        }
+      });
+    }
+
+    // Grant microphone (and camera) permissions to the renderer automatically.
+    // Without this, Electron's internal permission system blocks getUserMedia
+    // in the renderer even when macOS has already granted system-level access.
+    session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+      if (permission === 'media') {
+        console.log('[Main] granting media permission to renderer');
+        callback(true);
+      } else {
+        callback(false);
+      }
+    });
+
+    console.log('[Main] creating orb window');
+    orbWindow = createOrbWindow();
+    console.log('[Main] orb window created');
+    setOrbWindow(orbWindow);
+    console.log('[Main] creating tray');
+    tray      = createTray();
+    console.log('[Main] tray created');
+    console.log('[Main] starting window monitor');
+    startWindowMonitor();
+    console.log('[Main] starting decision loop');
+    startDecisionLoop(beginConversation);
+    console.log('[Main] starting briefing service');
+    startBriefingService(beginConversation);
+    console.log('[Main] starting wake-word listener');
+    startWakeWordListener();
+
+    // ── Sleep / wake handling ────────────────────────────────────────────────
+    // On suspend: stop the voice listener so the WebSocket and AudioContext are
+    // cleanly torn down before the system sleeps.
+    // On resume: wait 3 s for the audio device to become available again, then
+    // restart — but only if a conversation isn't already in progress.
+    powerMonitor.on('suspend', () => {
+      console.log('[Main] system suspending — stopping voice listener');
+      stopVoiceListener();
+    });
+
+    powerMonitor.on('resume', () => {
+      console.log('[Main] system resumed — restarting voice listener in 3 s');
+      setTimeout(() => {
+        if (!isConversing) {
+          console.log('[Main] restarting wake-word listener after wake');
+          startWakeWordListener();
+        }
+      }, 3000);
+    });
+
+    console.log('[Main] Axon desktop started');
+  } catch (err) {
+    console.error('[Main] STARTUP ERROR in ready handler:', err);
+  }
 });
 
 app.on('window-all-closed', () => {
