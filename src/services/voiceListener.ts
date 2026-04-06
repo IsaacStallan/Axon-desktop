@@ -322,6 +322,7 @@ function recordSoxChunk(secs: number): Promise<Buffer> {
       ? ['-t', 'waveaudio', 'default', '-r', String(SAMPLE_RATE), '-c', '1', '-b', '16', '-e', 'signed-integer', 'vol', '0.5', '-t', 'raw', '-']
       : ['-d', '-r', String(SAMPLE_RATE), '-c', '1', '-b', '16', '-e', 'signed-integer', 'vol', '0.5', '-t', 'raw', '-'];
 
+    console.log('[VoiceListener] spawning SoX with args:', JSON.stringify(soxArgs));
     const sox = spawn(SOX_PATH, soxArgs, { shell: false });
 
     activeSoxPid = sox.pid;
