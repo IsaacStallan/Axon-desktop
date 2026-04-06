@@ -319,7 +319,7 @@ async function runWindowsSession(onWakeWord: () => void): Promise<void> {
 function recordSoxChunk(secs: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const soxArgs = process.platform === 'win32'
-      ? ['-t', 'waveaudio', 'default', '-r', String(SAMPLE_RATE), '-c', '1', '-b', '16', '-e', 'signed-integer', 'vol', '0.5', '-t', 'raw', '-']
+      ? ['-t', 'waveaudio', 'default', '-r', String(SAMPLE_RATE), '-c', '1', '-b', '16', '-e', 'signed-integer', '-t', 'raw', '-']
       : ['-d', '-r', String(SAMPLE_RATE), '-c', '1', '-b', '16', '-e', 'signed-integer', 'vol', '0.5', '-t', 'raw', '-'];
 
     console.log('[VoiceListener] spawning SoX with args:', JSON.stringify(soxArgs));
