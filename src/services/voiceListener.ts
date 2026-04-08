@@ -14,7 +14,7 @@ const SOX_PATH           = process.env.SOX_PATH ?? (process.platform === 'darwin
 const SAMPLE_RATE        = 24000;
 const WINDOW_MS          = 3000;                          // transcription window (ms)
 const WINDOW_BYTES       = SAMPLE_RATE * 2 * (WINDOW_MS / 1000);  // PCM16 bytes per window
-const SPEECH_RMS_MIN     = 1500;                          // skip Whisper if RMS below this
+const SPEECH_RMS_MIN     = 500;                           // skip Whisper if RMS below this
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? '' });
 
