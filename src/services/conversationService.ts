@@ -12,8 +12,17 @@ import {
 } from './memoryService';
 import { TOOLS, executeTool } from './toolService';
 import { killCurrentRecording } from './whisperService';
+import { getPendingTasksText } from './taskStore';
+import { getGoalsText, hasGoals, addGoal, type Goal } from './goalService';
+import { getOpenCommitmentsText, extractCommitmentsFromSession } from './commitmentTracker';
+import { formatProactiveContext } from './proactiveContext';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
+
+
+const client = new Anthropic({
+  apiKey:     process.env.ANTHROPIC_API_KEY ?? '',
+  maxRetries: 4,  // default is 2 — 529 overload spikes need a few more attempts
+});
 
 // Use the SDK's MessageParam so history can hold tool-use and tool-result blocks
 // as well as plain text — both formats are valid MessageParam content.
@@ -62,7 +71,7 @@ function isJunk(transcript: string): boolean {
 }
 
 // Wraps transcribe() with a hard cap.
-// On timeout, kills the hung SoX process via taskkill so the audio device is
+// On timeout, kills the hung SoX process so the audio device is
 // released before the next recording attempt — without this, every subsequent
 // SoX call would also hang on the locked device.
 async function transcribeWithTimeout(durationSecs: number): Promise<string> {
@@ -143,7 +152,23 @@ function buildSystemPrompt(): string {
   const soul            = getSoul();
 
   return `You are Axon — an AI inspired by JARVIS from Iron Man, built specifically for Isaac.
-${soul ? `\n== YOUR SOUL (generated from memory — follow this above all else) ==\n${soul}\n== END SOUL ==\n` : ''}
+${!hasGoals() ? `
+== IMMEDIATE ACTION REQUIRED — goals.json IS EMPTY ==
+The goals file has no entries. You must populate it NOW in this turn.
+
+STEP 1 — Check if you already know his goals:
+  Look at the soul document and facts section below. If they mention anything Isaac wants to achieve, build, or become (businesses, revenue targets, personal goals, etc.) — call goal_add for each one RIGHT NOW without asking Isaac anything.
+
+STEP 2 — If no goals appear in soul/facts:
+  Say: "I don't have your goals saved — what are you actually working toward right now?" then call goal_add for each goal as he describes it.
+
+Rules (non-negotiable):
+  - Call goal_add once per goal, all in this turn
+  - Do NOT ask Isaac to confirm or repeat goals you already know from soul/facts
+  - Do NOT explain what you're doing — just save and briefly confirm
+  - Save FIRST, talk second
+== END IMMEDIATE ACTION ==
+` : ''}${soul ? `\n== YOUR SOUL (generated from memory — follow this above all else) ==\n${soul}\n== END SOUL ==\n` : ''}
 
 About Isaac:
 
@@ -221,9 +246,19 @@ You have genuine visibility into what Isaac is doing on his computer right now.
 Reference this naturally and proactively — e.g. "I see you've been on YouTube for 40 minutes"
 or "you've been in VS Code all morning — what are you building?"
 Do NOT say you don't have access to his PC. You do. Use it.
+${formatProactiveContext() ? `\nYour last proactive message (before this conversation started):\n${formatProactiveContext()}\nIf Isaac asks what you said, repeat it directly — do not ask him what you said.` : ''}
 
 What Axon knows about Isaac (learned over time):
 ${facts.length > 0 ? facts.map(f => `- ${f}`).join('\n') : '- No persistent facts recorded yet.'}
+
+Isaac's goals (ranked by impact — these are his north stars, reference them proactively):
+${getGoalsText() || '- No goals set yet.'}
+
+Open commitments (things Isaac said he\'d do — follow up if relevant):
+${getOpenCommitmentsText() || '- None outstanding.'}
+
+Isaac's open task list:
+${getPendingTasksText() || '- Nothing on the list right now.'}
 
 Recent conversation history (last 3 days):
 ${recentHistory}
@@ -241,6 +276,7 @@ Communication style:
 - Use occasional humour, but never overdo it
 - Avoid stiffness or excessive politeness
 - Never say 'certainly', 'of course', or 'I'd be happy to'
+- After completing ANY action (saving goals, tasks, commitments), do NOT just confirm and stop — immediately push the conversation forward: reference what was saved, call out a gap, ask a sharp follow-up, or challenge Isaac on the next step. Keep the momentum going.
 
 CRITICAL — You are speaking out loud via text-to-speech. NEVER use any markdown:
 - No asterisks for bold or italic (*word* or **word**)
@@ -274,13 +310,18 @@ async function sendMessage(userText: string): Promise<string> {
   history.push({ role: 'user', content: userText });
   trimHistory();
 
-  // First call — Claude may respond with text or decide to use a tool
+  // First call — Claude may respond with text or decide to use a tool.
+  // Haiku is ~3x faster than Sonnet for the short spoken replies Axon produces.
+  // The soul/personality system prompt gives it all the context it needs.
   let response = await client.messages.create({
-    model:      'claude-sonnet-4-6',
-    max_tokens: 500,   // higher budget so tool_use blocks don't get cut off
-    tools:      TOOLS,
-    system:     buildSystemPrompt(),
-    messages:   history,
+    model:       'claude-sonnet-4-6',
+    max_tokens:  500,
+    tools:       TOOLS,
+    // When no goals are saved, force Claude to use a tool — prevents it from
+    // saying "Done" as plain text without actually calling goal_add.
+    tool_choice: !hasGoals() ? { type: 'any' as const } : { type: 'auto' as const },
+    system:      buildSystemPrompt(),
+    messages:    history,
   });
 
   // ── Tool-use loop ──────────────────────────────────────────────────────────
@@ -315,7 +356,7 @@ async function sendMessage(userText: string): Promise<string> {
 
     response = await client.messages.create({
       model:      'claude-sonnet-4-6',
-      max_tokens: 180,   // spoken reply should stay short
+      max_tokens: 400,
       tools:      TOOLS,
       system:     buildSystemPrompt(),
       messages:   history,
@@ -336,7 +377,72 @@ function trimHistory(): void {
   if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
 }
 
+// ── Goal seeding ──────────────────────────────────────────────────────────────
+// When goals.json is empty, extract goals directly from soul/facts as JSON
+// and call addGoal() in Node.js — bypasses Claude's tool-calling entirely
+// so there's no way for it to "forget" to call the tool.
+
+async function seedGoalsFromMemory(): Promise<void> {
+  const soul  = getSoul();
+  const facts = getLearnedFacts();
+
+  if (!soul && facts.length === 0) {
+    console.log('[Conversation] no soul/facts to seed goals from');
+    return;
+  }
+
+  console.log('[Conversation] extracting goals from soul/facts...');
+
+  try {
+    const resp = await client.messages.create({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages: [{
+        role:    'user',
+        content:
+          'Extract every goal, target, or ambition Isaac has from the text below.\n' +
+          'Return ONLY a raw JSON array — no markdown, no explanation.\n' +
+          'Each item: { "text": string, "category": "financial"|"business"|"personal"|"health"|"other", "impact_score": 1-10, "time_horizon": "this week"|"this month"|"this year"|"life" }\n' +
+          'Return [] if genuinely no goals found.\n\n' +
+          (soul  ? `SOUL DOCUMENT:\n${soul.slice(0, 3000)}\n\n` : '') +
+          (facts.length > 0 ? `RECENT FACTS:\n${facts.slice(-60).join('\n')}` : ''),
+      }],
+    });
+
+    const text  = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text ?? '';
+    const match = text.match(/\[[\s\S]*?\]/);
+    if (!match) { console.log('[Conversation] no goal JSON found in extraction response'); return; }
+
+    const parsed: Array<{ text?: string; category?: string; impact_score?: number; time_horizon?: string }> =
+      JSON.parse(match[0]);
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      console.log('[Conversation] extraction returned empty array');
+      return;
+    }
+
+    for (const g of parsed) {
+      if (!g.text?.trim()) continue;
+      addGoal(
+        g.text,
+        (g.category as Goal['category']) ?? 'other',
+        typeof g.impact_score === 'number' ? g.impact_score : 5,
+        (g.time_horizon as Goal['timeHorizon']) ?? 'this year',
+      );
+    }
+    console.log(`[Conversation] seeded ${parsed.length} goals from memory`);
+  } catch (e) {
+    console.warn('[Conversation] seedGoalsFromMemory error:', e);
+  }
+}
+
+
+
 // ── Public API ────────────────────────────────────────────────────────────────
+
+export function isConversationActive(): boolean {
+  return conversationActive;
+}
 
 export async function triggerConversation(): Promise<void> {
   conversationActive = true;
@@ -346,14 +452,16 @@ export async function triggerConversation(): Promise<void> {
   sessionExchanges.splice(0, sessionExchanges.length);
   turnCount = 0;
 
+  // ── Pre-flight: seed goals from memory if none saved ───────────────────────
+  if (!hasGoals()) {
+    await seedGoalsFromMemory();
+  }
+
   console.log('[Conversation] loop started');
 
   while (conversationActive) {
     console.log('[Conversation] listening...');
-
-    // 8-second recording window per turn — long enough for a full sentence.
-    // Hard-capped at 20 s so a hung SoX process never freezes the loop.
-    const transcript = await transcribeWithTimeout(8);
+    const transcript = await transcribeWithTimeout(30);
     console.log('[Conversation] transcript:', transcript);
 
     if (!conversationActive) break;
@@ -390,8 +498,7 @@ export async function triggerConversation(): Promise<void> {
       const response = await sendMessage(transcript);
       console.log('[Conversation] ← Claude:', response);
 
-      // Strip markdown before speaking — ElevenLabs reads asterisks and bullets
-      // literally, and special Unicode arrows break the PowerShell playback script
+      // Strip markdown before speaking
       const spokenResponse = stripMarkdown(response);
       lastAxonResponse     = spokenResponse;
 
@@ -420,9 +527,7 @@ export async function triggerConversation(): Promise<void> {
         await new Promise(r => setTimeout(r, 100));
       }
 
-      // 200 ms gap — just enough for room reverb to decay.
-      // Combined with the PS1 Ceiling() buffer, total dead time ≈ 200 ms so
-      // Isaac can reply almost immediately after Axon finishes speaking.
+      // 200 ms gap
       await new Promise(r => setTimeout(r, 200));
     } catch (e) {
       console.warn('[Conversation] error:', e);
@@ -433,11 +538,11 @@ export async function triggerConversation(): Promise<void> {
   conversationActive = false;
   history.splice(0, history.length);
 
-  // Extract facts from the whole session on close — catches anything missed
-  // by the mid-session extractions
+  // Extract facts + commitments from the whole session on close
   if (sessionExchanges.length > 0) {
-    console.log('[Memory] end-of-session fact extraction...');
+    console.log('[Memory] end-of-session extraction...');
     extractAndSaveFacts(sessionExchanges).catch(() => {});
+    extractCommitmentsFromSession(sessionExchanges).catch(() => {});
   }
 
   console.log('[Conversation] loop ended');
