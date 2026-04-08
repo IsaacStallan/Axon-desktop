@@ -15,7 +15,9 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 console.error('[Main] loading windowMonitor');
-const { startWindowMonitor, getActivitySummary, getCurrentApp, getProductivityScore } = require('./services/windowMonitor');
+const { startWindowMonitor, getActivitySummary, getCurrentApp, getProductivityScore, getSessionLog } = require('./services/windowMonitor');
+const { getActiveGoals } = require('./services/goalService');
+const { getOpenCommitments } = require('./services/commitmentTracker');
 console.error('[Main] loading silentMonitor');
 const { startSilentMonitor } = require('./services/silentMonitor');
 console.error('[Main] loading decisionEngine');
@@ -63,15 +65,17 @@ function createOrbWindow(): BrowserWindow {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
   const win = new BrowserWindow({
-    width:           120,
-    height:          120,
-    x:               width  - 140,
-    y:               height - 140,
+    width:           420,
+    height:          680,
+    minWidth:        320,
+    minHeight:       400,
+    x:               Math.max(0, width  - 440),
+    y:               Math.max(0, height - 700),
     frame:           false,
     transparent:     true,
     alwaysOnTop:     true,
     skipTaskbar:     true,
-    resizable:       false,
+    resizable:       true,
     movable:         true,
     hasShadow:       false,
     webPreferences: {
@@ -141,6 +145,40 @@ export function setOrbState(state: 'idle' | 'listening' | 'speaking' | 'thinking
   orbWindow?.webContents.send('orb:state', state);
 }
 
+// ── Stats payload for the Command Center UI ──────────────────────────────────
+function sendStats(): void {
+  if (!orbWindow || orbWindow.isDestroyed()) return;
+
+  const log      = getSessionLog() as Array<{ label: string; durationMs: number }>;
+  const focusMin = Math.round(
+    log.filter(e => e.label === 'positive').reduce((s, e) => s + e.durationMs, 0) / 60_000,
+  );
+  const driftMin = Math.round(
+    log.filter(e => e.label === 'negative').reduce((s, e) => s + e.durationMs, 0) / 60_000,
+  );
+  const app = getCurrentApp() as { name: string; durationMins: number };
+
+  const priorities = (getActiveGoals() as Array<{ text: string; impactScore: number; status: string }>)
+    .filter(g => g.status === 'active')
+    .sort((a, b) => b.impactScore - a.impactScore)
+    .slice(0, 3)
+    .map(g => ({ text: g.text, impactScore: g.impactScore }));
+
+  const commitments = (getOpenCommitments() as Array<{ text: string }>)
+    .slice(0, 4)
+    .map(c => c.text);
+
+  orbWindow.webContents.send('axon:stats', {
+    focusMin,
+    driftMin,
+    currentApp:        app.name,
+    productivityScore: getProductivityScore() as number,
+    sessionMin:        Math.round(app.durationMins),
+    priorities,
+    commitments,
+  });
+}
+
 // ── Wake-word → conversation lifecycle ──────────────────────────────────────
 // The voice listener and conversation loop both call SoX to record from the
 // mic.  Running them simultaneously splits the audio stream and produces
@@ -186,6 +224,24 @@ ipcMain.on('orb:tap', () => {
 ipcMain.on('orb:ready', () => {
   console.log('[Main] orb renderer ready');
   setOrbState('idle');
+});
+
+ipcMain.on('orb:minimise', () => {
+  orbWindow?.minimize();
+});
+
+ipcMain.on('orb:to-pill', () => {
+  if (!orbWindow) return;
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  orbWindow.setSize(320, 48);
+  orbWindow.setPosition(Math.max(0, width - 340), Math.max(0, height - 68));
+});
+
+ipcMain.on('orb:from-pill', () => {
+  if (!orbWindow) return;
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  orbWindow.setSize(420, 680);
+  orbWindow.setPosition(Math.max(0, width - 440), Math.max(0, height - 700));
 });
 
 // ── Second-instance focus (production only) ──────────────────────────────────
@@ -241,6 +297,9 @@ app.on('ready', () => {
     orbWindow = createOrbWindow();
     console.log('[Main] orb window created');
     setOrbWindow(orbWindow);
+    // Send initial stats once renderer has loaded, then every 30 s
+    setTimeout(() => sendStats(), 4000);
+    setInterval(sendStats, 30_000);
     console.log('[Main] creating tray');
     tray      = createTray();
     console.log('[Main] tray created');

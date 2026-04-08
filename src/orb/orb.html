@@ -2,193 +2,412 @@
 <html>
 <head>
   <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src ws://localhost:* http://localhost:*" />
   <title>Axon</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    html, body {
-      width: 120px;
-      height: 120px;
-      background: transparent;
-      overflow: hidden;
-      -webkit-app-region: drag;
-      user-select: none;
+    :root {
+      --cyan:       #00D4FF;
+      --border:     #004455;
+      --bg:         #000000;
+      --text:       #CCCCCC;
+      --text-hi:    #FFFFFF;
     }
 
-    .container {
-      width: 120px;
-      height: 120px;
+    html, body {
+      width: 420px;
+      background: transparent;
+      overflow: hidden;
+      user-select: none;
+      font-family: 'Courier New', 'Lucida Console', monospace;
+      color: var(--text);
+    }
+
+    /* ── Main panel ──────────────────────────────────────────────────────────── */
+    #panel {
+      width: 420px;
+      height: 680px;
+      background: #000000;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Scanline overlay */
+    #panel::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 3px,
+        rgba(0, 212, 255, 0.012) 3px,
+        rgba(0, 212, 255, 0.012) 4px
+      );
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────────────── */
+    #header {
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      height: 44px;
+      border-bottom: 1px solid var(--border);
+      -webkit-app-region: drag;
+      flex-shrink: 0;
+      gap: 8px;
+    }
+
+    #title {
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 4px;
+      color: var(--cyan);
+    }
+
+    #status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #333333;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+
+    #status-text {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--text);
+      flex: 1;
+      transition: color 0.3s;
+    }
+
+    #clock {
+      font-size: 11px;
+      letter-spacing: 1px;
+      color: var(--text-hi);
+      -webkit-app-region: no-drag;
+    }
+
+    #window-controls {
+      display: flex;
+      gap: 6px;
+      -webkit-app-region: no-drag;
+    }
+
+    #window-controls button {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 22px;
+      height: 22px;
+      font-size: 11px;
+      cursor: pointer;
+      border-radius: 2px;
       display: flex;
       align-items: center;
       justify-content: center;
-      position: relative;
+      padding: 0;
+      line-height: 1;
+      transition: border-color 0.2s, color 0.2s;
     }
 
-    /* ── Outer glow ── */
-    .outer-glow {
-      position: absolute;
-      width: 110px;
-      height: 110px;
-      border-radius: 50%;
-      background: rgba(123, 110, 246, 0.12);
-      animation: breathe-outer 2.4s ease-in-out infinite;
+    #window-controls button:hover {
+      border-color: var(--cyan);
+      color: var(--cyan);
     }
 
-    /* ── Middle ring ── */
-    .middle-ring {
-      position: absolute;
-      width: 80px;
-      height: 80px;
-      border-radius: 50%;
-      background: rgba(123, 110, 246, 0.35);
-      animation: breathe-middle 2.4s ease-in-out infinite;
-    }
-
-    /* ── Inner core ── */
-    .core {
-      position: relative;
-      width: 52px;
-      height: 52px;
-      border-radius: 50%;
-      background: rgba(180, 170, 255, 0.95);
+    /* ── Waveform ─────────────────────────────────────────────────────────────── */
+    #waveform-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 0 18px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
       cursor: pointer;
       -webkit-app-region: no-drag;
-      box-shadow:
-        0 0 20px rgba(123, 110, 246, 0.7),
-        0 0 40px rgba(123, 110, 246, 0.3);
-      transition: background 0.4s ease, box-shadow 0.4s ease;
+    }
+
+    #waveform-canvas {
+      display: block;
+    }
+
+    /* ── Stats row ────────────────────────────────────────────────────────────── */
+    #stats-row {
+      display: flex;
+      height: 78px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #today-stats {
+      width: 110px;
+      padding: 10px 12px;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 2px;
+    }
+
+    #live-stats {
+      flex: 1;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    .stat-label {
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: var(--text);
+      opacity: 0.55;
+    }
+
+    .stat-value {
+      font-size: 14px;
+      color: var(--cyan);
+      letter-spacing: 1px;
+    }
+
+    #current-app {
+      font-size: 11px;
+      color: var(--text-hi);
+      letter-spacing: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #productivity-bar {
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
       overflow: hidden;
     }
 
-    .core:active { transform: scale(0.94); }
-
-    /* ── Specular highlight ── */
-    .highlight {
-      position: absolute;
-      top: 9px;
-      left: 9px;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.65);
-      pointer-events: none;
+    #productivity-fill {
+      height: 100%;
+      background: var(--cyan);
+      width: 0%;
+      transition: width 1s ease;
     }
 
-    /* ── Listening rings ── */
-    .ring {
-      position: absolute;
-      border-radius: 50%;
-      border: 1.5px solid rgba(123, 110, 246, 0.4);
-      animation: ring-expand 2s ease-out infinite;
-      opacity: 0;
+    #session-time {
+      font-size: 9px;
+      letter-spacing: 1px;
+      color: var(--text);
+      opacity: 0.6;
     }
-    .ring:nth-child(1) { width: 70px;  height: 70px;  animation-delay: 0s; }
-    .ring:nth-child(2) { width: 90px;  height: 90px;  animation-delay: 0.5s; }
-    .ring:nth-child(3) { width: 110px; height: 110px; animation-delay: 1s; }
 
-    /* ── Tooltip ── */
-    .tooltip {
-      position: fixed;
-      bottom: 128px;
-      right: 12px;
-      background: rgba(13, 13, 20, 0.92);
-      color: rgba(180, 170, 255, 0.9);
-      font-family: -apple-system, 'Segoe UI', sans-serif;
-      font-size: 11px;
-      letter-spacing: 0.5px;
-      padding: 5px 10px;
-      border-radius: 6px;
-      border: 1px solid rgba(123, 110, 246, 0.25);
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.2s;
+    /* ── Priorities ───────────────────────────────────────────────────────────── */
+    #priorities-section {
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    /* ── Commitments ──────────────────────────────────────────────────────────── */
+    #commitments-section {
+      flex: 1;
+      overflow-y: auto;
+      border-bottom: 1px solid var(--border);
+      min-height: 0;
+    }
+
+    #commitments-section::-webkit-scrollbar { width: 3px; }
+    #commitments-section::-webkit-scrollbar-track { background: transparent; }
+    #commitments-section::-webkit-scrollbar-thumb { background: var(--border); }
+
+    /* ── Shared section styles ────────────────────────────────────────────────── */
+    .section-label {
+      font-size: 9px;
+      letter-spacing: 3px;
+      color: var(--text);
+      opacity: 0.45;
+      padding: 8px 12px 4px;
+    }
+
+    .priority-item {
+      display: flex;
+      align-items: center;
+      padding: 5px 12px;
+      gap: 8px;
+    }
+
+    .priority-num {
+      font-size: 9px;
+      color: var(--cyan);
+      opacity: 0.6;
+      width: 18px;
+      flex-shrink: 0;
+    }
+
+    .priority-text {
+      font-size: 10px;
+      color: var(--text-hi);
+      flex: 1;
       white-space: nowrap;
-    }
-    .container:hover .tooltip { opacity: 1; }
-
-    /* ─── Animations ──────────────────────────────────────────────────────── */
-
-    @keyframes breathe-outer {
-      0%, 100% { transform: scale(1.00); opacity: 0.12; }
-      50%       { transform: scale(1.08); opacity: 0.22; }
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: 0.5px;
     }
 
-    @keyframes breathe-middle {
-      0%, 100% { transform: scale(1.00); }
-      50%       { transform: scale(1.05); }
+    .priority-bar-wrap {
+      width: 58px;
+      height: 3px;
+      background: var(--border);
+      flex-shrink: 0;
+      border-radius: 1px;
+      overflow: hidden;
     }
 
-    @keyframes ring-expand {
-      0%   { transform: scale(0.6); opacity: 0.6; }
-      100% { transform: scale(1.4); opacity: 0.0; }
+    .priority-bar-fill {
+      height: 100%;
+      background: var(--cyan);
+      border-radius: 1px;
     }
 
-    @keyframes urgent-pulse {
-      0%, 100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.8), 0 0 40px rgba(239, 68, 68, 0.4); }
-      50%       { box-shadow: 0 0 35px rgba(239, 68, 68, 1.0), 0 0 60px rgba(239, 68, 68, 0.6); }
+    .commitment-item {
+      display: flex;
+      align-items: flex-start;
+      padding: 5px 12px;
+      gap: 7px;
     }
 
-    @keyframes thinking-spin {
-      0%   { box-shadow: 0 0 20px rgba(250, 200, 80, 0.7), 0 0 40px rgba(250, 200, 80, 0.3); }
-      50%  { box-shadow: 0 0 30px rgba(250, 200, 80, 1.0), 0 0 55px rgba(250, 200, 80, 0.5); }
-      100% { box-shadow: 0 0 20px rgba(250, 200, 80, 0.7), 0 0 40px rgba(250, 200, 80, 0.3); }
+    .commitment-arrow {
+      color: var(--cyan);
+      font-size: 10px;
+      opacity: 0.6;
+      flex-shrink: 0;
+      margin-top: 1px;
     }
 
-    /* ─── State modifiers ─────────────────────────────────────────────────── */
-
-    body.listening .core {
-      background: rgba(45, 212, 191, 0.95);
-      box-shadow: 0 0 20px rgba(45, 212, 191, 0.8), 0 0 40px rgba(45, 212, 191, 0.4);
-    }
-    body.listening .outer-glow {
-      background: rgba(45, 212, 191, 0.10);
-    }
-    body.listening .middle-ring {
-      background: rgba(45, 212, 191, 0.30);
-    }
-    body.listening .ring {
-      border-color: rgba(45, 212, 191, 0.5);
+    .commitment-text {
+      font-size: 10px;
+      color: var(--text);
+      letter-spacing: 0.3px;
+      line-height: 1.4;
     }
 
-    body.speaking .core {
-      background: rgba(200, 190, 255, 0.98);
-      animation: breathe-middle 0.8s ease-in-out infinite;
-      box-shadow: 0 0 25px rgba(123, 110, 246, 0.9), 0 0 50px rgba(123, 110, 246, 0.5);
+    /* ── Status dot state colours ─────────────────────────────────────────────── */
+    body.listening  #status-dot { background: #00D4FF; }
+    body.thinking   #status-dot { background: #FFFFFF; }
+    body.speaking   #status-dot { background: #00FFAA; }
+    body.idle       #status-dot { background: #333333; }
+    body.urgent     #status-dot { background: #FF4444; }
+
+    body.listening  #status-text { color: #00D4FF; }
+    body.thinking   #status-text { color: #CCCCCC; }
+    body.speaking   #status-text { color: #00FFAA; }
+
+    /* ── Mini pill ────────────────────────────────────────────────────────────── */
+    #mini-pill {
+      position: fixed;
+      inset: 0;
+      width: 320px;
+      height: 48px;
+      background: #000000;
+      border: 1px solid var(--border);
+      align-items: center;
+      gap: 10px;
+      padding: 0 14px;
+      cursor: pointer;
+      -webkit-app-region: drag;
+      z-index: 200;
     }
 
-    body.thinking .core {
-      background: rgba(250, 200, 80, 0.90);
-      animation: thinking-spin 1.2s ease-in-out infinite;
+    #mini-pill span.pill-label {
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: var(--cyan);
+      -webkit-app-region: no-drag;
     }
-    body.thinking .outer-glow { background: rgba(250, 200, 80, 0.10); }
-    body.thinking .middle-ring { background: rgba(250, 200, 80, 0.28); }
 
-    body.urgent .core {
-      background: rgba(239, 68, 68, 0.95);
-      animation: urgent-pulse 0.7s ease-in-out infinite;
+    #mini-status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #333333;
+      flex-shrink: 0;
+      transition: background 0.3s;
     }
-    body.urgent .outer-glow { background: rgba(239, 68, 68, 0.14); }
-    body.urgent .middle-ring { background: rgba(239, 68, 68, 0.35); }
+
+    #mini-waveform {
+      display: block;
+      -webkit-app-region: no-drag;
+      flex-shrink: 0;
+    }
   </style>
 </head>
-<body>
-  <div class="container" id="container">
-    <!-- Listening rings (only visible in listening state) -->
-    <div class="ring"></div>
-    <div class="ring"></div>
-    <div class="ring"></div>
+<body class="idle">
 
-    <!-- Layers -->
-    <div class="outer-glow"></div>
-    <div class="middle-ring"></div>
-
-    <div class="core" id="core">
-      <div class="highlight"></div>
-    </div>
-
-    <div class="tooltip">Axon is watching</div>
+  <!-- Mini pill (shown when collapsed) -->
+  <div id="mini-pill" style="display:none">
+    <canvas id="mini-waveform" width="40" height="40"></canvas>
+    <span id="mini-status-dot"></span>
+    <span class="pill-label">AXON</span>
   </div>
 
-  <script src="orb_window.js"></script>
+  <!-- Main panel -->
+  <div id="panel">
+
+    <!-- Header -->
+    <div id="header">
+      <span id="title">AXON</span>
+      <span id="status-dot"></span>
+      <span id="status-text">IDLE</span>
+      <span id="clock">00:00</span>
+      <div id="window-controls">
+        <button id="minimise-btn" title="Minimise">—</button>
+        <button id="close-btn" title="Collapse to pill">✕</button>
+      </div>
+    </div>
+
+    <!-- Central waveform -->
+    <div id="waveform-container">
+      <canvas id="waveform-canvas" width="200" height="200"></canvas>
+    </div>
+
+    <!-- Stats row -->
+    <div id="stats-row">
+      <div id="today-stats">
+        <div class="stat-label">FOCUS</div>
+        <div class="stat-value" id="focus-time">0m</div>
+        <div class="stat-label">DRIFT</div>
+        <div class="stat-value" id="drift-time">0m</div>
+      </div>
+      <div id="live-stats">
+        <div id="current-app">—</div>
+        <div id="productivity-bar">
+          <div id="productivity-fill"></div>
+        </div>
+        <div id="session-time">SESSION 0min</div>
+      </div>
+    </div>
+
+    <!-- Priorities -->
+    <div id="priorities-section">
+      <div class="section-label">PRIORITIES</div>
+      <div id="priorities-list"></div>
+    </div>
+
+    <!-- Commitments -->
+    <div id="commitments-section">
+      <div class="section-label">OPEN COMMITMENTS</div>
+      <div id="commitments-list"></div>
+    </div>
+
+  </div>
+
 </body>
 </html>
