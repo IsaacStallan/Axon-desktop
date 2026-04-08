@@ -14,7 +14,7 @@ const SOX_PATH           = process.env.SOX_PATH ?? (process.platform === 'darwin
 const SAMPLE_RATE        = 24000;
 const WINDOW_MS          = 3000;                          // transcription window (ms)
 const WINDOW_BYTES       = SAMPLE_RATE * 2 * (WINDOW_MS / 1000);  // PCM16 bytes per window
-const SPEECH_RMS_MIN     = 300;                           // skip Whisper if RMS below this
+const SPEECH_RMS_MIN     = 1500;                          // skip Whisper if RMS below this
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? '' });
 
@@ -121,8 +121,9 @@ async function transcribeBuffer(pcm: Buffer): Promise<string> {
   try {
     fs.writeFileSync(tmpPath, wav);
     const response = await client.audio.transcriptions.create({
-      file:  fs.createReadStream(tmpPath),
-      model: 'whisper-1',
+      file:   fs.createReadStream(tmpPath),
+      model:  'whisper-1',
+      prompt: 'Axon, hey Axon, action',  // bias towards wake word, reduces hallucinations
     });
     return response.text.trim();
   } catch (e) {
