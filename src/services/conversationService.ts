@@ -304,6 +304,28 @@ Dynamic:
 Your goal: Help Isaac think better, decide better, and execute effectively — while maintaining a natural, fluid conversational dynamic. You know him. Act like it.`;
 }
 
+// ── Retry wrapper for 529 overloaded errors ───────────────────────────────────
+
+async function callWithRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (e: unknown) {
+      const status = (e as { status?: number })?.status;
+      const isOverloaded = status === 529 ||
+        (e instanceof Error && e.message.includes('529'));
+      if (isOverloaded && attempt < retries) {
+        console.log('[Conversation] Anthropic overloaded, retrying in 2s...');
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      throw e;
+    }
+  }
+  // unreachable, but satisfies TypeScript
+  throw new Error('callWithRetry exhausted');
+}
+
 // ── Send to Claude (with tool-use support) ────────────────────────────────────
 
 async function sendMessage(userText: string): Promise<string> {
@@ -313,7 +335,7 @@ async function sendMessage(userText: string): Promise<string> {
   // First call — Claude may respond with text or decide to use a tool.
   // Haiku is ~3x faster than Sonnet for the short spoken replies Axon produces.
   // The soul/personality system prompt gives it all the context it needs.
-  let response = await client.messages.create({
+  let response = await callWithRetry(() => client.messages.create({
     model:       'claude-sonnet-4-6',
     max_tokens:  500,
     tools:       TOOLS,
@@ -322,7 +344,7 @@ async function sendMessage(userText: string): Promise<string> {
     tool_choice: !hasGoals() ? { type: 'any' as const } : { type: 'auto' as const },
     system:      buildSystemPrompt(),
     messages:    history,
-  });
+  }));
 
   // ── Tool-use loop ──────────────────────────────────────────────────────────
   // Claude can chain multiple tool calls; we resolve each one before continuing.
@@ -354,13 +376,13 @@ async function sendMessage(userText: string): Promise<string> {
     history.push({ role: 'user', content: toolResults });
     trimHistory();
 
-    response = await client.messages.create({
+    response = await callWithRetry(() => client.messages.create({
       model:      'claude-sonnet-4-6',
       max_tokens: 400,
       tools:      TOOLS,
       system:     buildSystemPrompt(),
       messages:   history,
-    });
+    }));
   }
 
   // ── Extract the final spoken reply ────────────────────────────────────────
