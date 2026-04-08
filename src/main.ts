@@ -25,7 +25,8 @@ const { startDecisionLoop } = require('./services/decisionEngine');
 console.error('[Main] loading voiceListener');
 const { startVoiceListener, stopVoiceListener, setOrbWindow } = require('./services/voiceListener');
 console.error('[Main] loading conversationService');
-const { triggerConversation, stopConversation } = require('./services/conversationService');
+const { triggerConversation, stopConversation, setOrbWindow: setConvOrbWindow } = require('./services/conversationService');
+const { setOrbWindow: setTtsOrbWindow } = require('./services/elevenLabsService');
 console.error('[Main] loading briefingService');
 const { startBriefingService } = require('./services/briefingService');
 console.error('[Main] all imports done');
@@ -297,6 +298,8 @@ app.on('ready', () => {
     orbWindow = createOrbWindow();
     console.log('[Main] orb window created');
     setOrbWindow(orbWindow);
+    setConvOrbWindow(orbWindow);
+    setTtsOrbWindow(orbWindow);
     // Send initial stats once renderer has loaded, then every 30 s
     setTimeout(() => sendStats(), 4000);
     setInterval(sendStats, 30_000);

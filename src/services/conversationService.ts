@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { BrowserWindow } from 'electron';
 import { speak, isSpeaking } from './elevenLabsService';
 import { getActivitySummary, getCurrentApp, getProductivityScore } from './windowMonitor';
 import { transcribe } from './whisperService';
@@ -18,6 +19,9 @@ import { getOpenCommitmentsText, extractCommitmentsFromSession } from './commitm
 import { formatProactiveContext } from './proactiveContext';
 
 
+
+let orbWin: BrowserWindow | null = null;
+export function setOrbWindow(win: BrowserWindow): void { orbWin = win; }
 
 const client = new Anthropic({
   apiKey:     process.env.ANTHROPIC_API_KEY ?? '',
@@ -482,6 +486,7 @@ export async function triggerConversation(): Promise<void> {
   console.log('[Conversation] loop started');
 
   while (conversationActive) {
+    orbWin?.webContents.send('orb:state', 'listening');
     console.log('[Conversation] listening...');
     const transcript = await transcribeWithTimeout(30);
     console.log('[Conversation] transcript:', transcript);
@@ -516,6 +521,7 @@ export async function triggerConversation(): Promise<void> {
     }
 
     try {
+      orbWin?.webContents.send('orb:state', 'thinking');
       console.log('[Conversation] → Claude:', transcript);
       const response = await sendMessage(transcript);
       console.log('[Conversation] ← Claude:', response);

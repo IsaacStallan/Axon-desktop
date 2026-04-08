@@ -304,10 +304,15 @@ function animate(): void {
 
 requestAnimationFrame(animate);
 
-// ── Waveform click → tap orb ──────────────────────────────────────────────────
+// ── Waveform click → toggle pill ─────────────────────────────────────────────
 
 (document.getElementById('waveform-container') as HTMLElement).addEventListener('click', () => {
-  window.axon.tapOrb();
+  const panel    = document.getElementById('panel') as HTMLElement;
+  const miniPill = document.getElementById('mini-pill') as HTMLElement;
+  panel.style.display    = 'none';
+  miniPill.style.display = 'flex';
+  isPillMode = true;
+  window.axon.toPill();
 });
 
 // ── Window controls ───────────────────────────────────────────────────────────
