@@ -323,13 +323,13 @@ app.on('ready', () => {
     });
 
     powerMonitor.on('resume', () => {
-      console.log('[Main] system resumed — restarting voice listener in 3 s');
+      console.log('[Main] system resumed — restarting voice listener in 5 s');
       setTimeout(() => {
         if (!isConversing) {
           console.log('[Main] restarting wake-word listener after wake');
           startWakeWordListener();
         }
-      }, 3000);
+      }, 5000);
     });
 
     console.log('[Main] Axon desktop started');

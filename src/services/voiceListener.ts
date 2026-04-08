@@ -25,6 +25,7 @@ type StateCallback = (state: 'idle' | 'listening' | 'speaking' | 'thinking' | 'u
 // ── Module state ──────────────────────────────────────────────────────────────
 
 let stopFlag         = false;
+let sessionGen       = 0;          // incremented on every start; old sessions self-abort
 let activeSoxPid:    number | undefined;
 let orbWin:          BrowserWindow | null = null;
 let rendererMicReady = false;
@@ -141,14 +142,19 @@ export function startVoiceListener(
   setOrbState: StateCallback,
 ): void {
   stopFlag = false;
-  void sessionLoop(onWakeWord, setOrbState);
+  const gen = ++sessionGen;
+  void sessionLoop(onWakeWord, setOrbState, gen);
 }
 
 export function stopVoiceListener(): void {
   stopFlag = true;
   killSox(activeSoxPid);
-  // On macOS, mic:stop is sent when the session promise resolves/rejects
-  // (see cleanupMic inside runMacSession).
+  // Immediately stop the renderer mic — don't wait up to WINDOW_MS for the
+  // timer to fire.  This prevents the renderer from sending stale audio into
+  // the next session after a sleep/wake cycle.
+  if (orbWin && !orbWin.isDestroyed()) {
+    orbWin.webContents.send('mic:stop');
+  }
 }
 
 // ── Session loop (reconnects on errors) ───────────────────────────────────────
@@ -156,38 +162,38 @@ export function stopVoiceListener(): void {
 async function sessionLoop(
   onWakeWord:  () => void,
   setOrbState: StateCallback,
+  gen:         number,
 ): Promise<void> {
-  console.log('[VoiceListener] wake-word loop started (Whisper REST)');
+  console.log(`[VoiceListener] wake-word loop started (gen ${gen})`);
 
-  while (!stopFlag) {
+  while (!stopFlag && gen === sessionGen) {
     try {
       if (process.platform === 'darwin') {
-        await runMacSession(onWakeWord);
+        await runMacSession(onWakeWord, gen);
       } else {
         await runWindowsSession(onWakeWord);
       }
-      // If we get here without stopFlag, the session ended (e.g. window closed)
     } catch (e) {
-      if (stopFlag) break;
+      if (stopFlag || gen !== sessionGen) break;
       console.warn('[VoiceListener] session error — reconnecting in 2 s:', e);
       await sleep(2000);
     }
   }
 
-  console.log('[VoiceListener] loop stopped');
+  console.log(`[VoiceListener] loop stopped (gen ${gen})`);
 }
 
 // ── macOS session: IPC mic → periodic Whisper chunks ─────────────────────────
 
-function runMacSession(onWakeWord: () => void): Promise<void> {
+function runMacSession(onWakeWord: () => void, gen: number): Promise<void> {
   return new Promise((resolve, reject) => {
     if (!orbWin || orbWin.isDestroyed()) {
       return reject(new Error('[VoiceListener] orbWindow not set'));
     }
 
     const audioChunks: Buffer[] = [];
-    let settled       = false;
-    let checkTimer:   NodeJS.Timeout | undefined;
+    let settled        = false;
+    let checkTimer:    NodeJS.Timeout | undefined;
     let isTranscribing = false;
 
     function cleanup(): void {
@@ -205,7 +211,7 @@ function runMacSession(onWakeWord: () => void): Promise<void> {
     }
 
     const chunkHandler = (_e: unknown, data: unknown) => {
-      if (stopFlag) return;
+      if (stopFlag || gen !== sessionGen) return;
       audioChunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data as Uint8Array));
     };
 
@@ -220,7 +226,7 @@ function runMacSession(onWakeWord: () => void): Promise<void> {
     const sendMicStart = () => {
       if (orbWin && !orbWin.isDestroyed()) {
         orbWin.webContents.send('mic:start');
-        console.log('[VoiceListener] sent mic:start to renderer');
+        console.log(`[VoiceListener] sent mic:start to renderer (gen ${gen})`);
       }
     };
 
@@ -233,7 +239,7 @@ function runMacSession(onWakeWord: () => void): Promise<void> {
 
     // Every WINDOW_MS, take the accumulated audio, run VAD + Whisper
     checkTimer = setInterval(async () => {
-      if (stopFlag) { settle(() => resolve()); return; }
+      if (stopFlag || gen !== sessionGen) { settle(() => resolve()); return; }
       if (isTranscribing || audioChunks.length === 0) return;
 
       // Need at least ~half a window of data before attempting transcription
@@ -254,7 +260,7 @@ function runMacSession(onWakeWord: () => void): Promise<void> {
           console.log('[VoiceListener] heard:', transcript);
         }
 
-        if (!stopFlag && isWakeWord(transcript)) {
+        if (!stopFlag && gen === sessionGen && isWakeWord(transcript)) {
           console.log('[VoiceListener] WAKE WORD DETECTED:', transcript);
 
           const command = extractCommandAfterWakeWord(transcript);
