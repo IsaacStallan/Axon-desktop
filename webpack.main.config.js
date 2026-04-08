@@ -16,7 +16,9 @@ module.exports = {
   },
   target: 'electron-main',
   externals: {
-    // All dependencies are Node built-ins (child_process, fs, path, os)
-    // or pure-JS npm packages — no native externals needed
+    // Playwright ships binary assets (PNG, CSS, fonts) that webpack can't bundle.
+    // Mark it external so Node.js requires it at runtime from node_modules.
+    playwright: 'commonjs playwright',
+    'playwright-core': 'commonjs playwright-core',
   },
 };

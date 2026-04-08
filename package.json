@@ -19,7 +19,8 @@
     "dotenv": "^16.5.0",
     "elevenlabs": "^1.57.0",
     "openai": "^6.32.0",
-    "play-sound": "^1.1.6"
+    "play-sound": "^1.1.6",
+    "playwright": "^1.59.1"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.8.0",
