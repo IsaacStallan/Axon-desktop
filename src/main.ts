@@ -11,8 +11,12 @@ import {
   powerMonitor,
 } from 'electron';
 import path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import * as dotenv from 'dotenv';
 dotenv.config();
+
+const execAsync = promisify(exec);
 
 console.error('[Main] loading windowMonitor');
 const { startWindowMonitor, getActivitySummary, getCurrentApp, getProductivityScore, getSessionLog } = require('./services/windowMonitor');
@@ -29,6 +33,7 @@ const { triggerConversation, stopConversation, setOrbWindow: setConvOrbWindow } 
 const { setOrbWindow: setTtsOrbWindow } = require('./services/elevenLabsService');
 console.error('[Main] loading briefingService');
 const { startBriefingService } = require('./services/briefingService');
+const { setOrbWindow: setSubAgentOrbWindow } = require('./services/subAgentOrchestrator');
 console.error('[Main] all imports done');
 
 // ── Global error handlers ─────────────────────────────────────────────────────
@@ -141,13 +146,52 @@ function createTray(): Tray {
   return t;
 }
 
+// ── Open apps (macOS only) ────────────────────────────────────────────────────
+
+const THIRTY_MINS = 30 * 60_000;
+
+async function getOpenApps(): Promise<Array<{ name: string; lastUsed: number; isActive: boolean }>> {
+  if (process.platform !== 'darwin') return [];
+  try {
+    const { stdout } = await execAsync(
+      `osascript -e 'tell application "System Events" to get name of every process whose background only is false'`,
+      { timeout: 5_000 },
+    );
+    const names     = stdout.trim().split(', ').map(n => n.trim()).filter(Boolean);
+    const log       = getSessionLog() as Array<{ name: string; startedAt: number }>;
+    const recentSet = new Set(
+      log.filter(e => Date.now() - e.startedAt < THIRTY_MINS).map(e => e.name.toLowerCase()),
+    );
+    const cur = (getCurrentApp() as { name: string }).name.toLowerCase();
+    recentSet.add(cur);
+
+    return names.map(name => ({
+      name,
+      lastUsed: Date.now(),
+      isActive: recentSet.has(name.toLowerCase()),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ── Broadcast orb state to renderer ─────────────────────────────────────────
+
+const ACTIVITY_LABELS: Record<string, string> = {
+  idle:      'Monitoring your activity',
+  listening: 'Listening for your response',
+  thinking:  'Thinking…',
+  speaking:  'Speaking',
+  urgent:    'Urgent alert',
+};
+
 export function setOrbState(state: 'idle' | 'listening' | 'speaking' | 'thinking' | 'urgent'): void {
   orbWindow?.webContents.send('orb:state', state);
+  orbWindow?.webContents.send('axon:activity', ACTIVITY_LABELS[state] ?? state);
 }
 
 // ── Stats payload for the Command Center UI ──────────────────────────────────
-function sendStats(): void {
+async function sendStats(): Promise<void> {
   if (!orbWindow || orbWindow.isDestroyed()) return;
 
   const log      = getSessionLog() as Array<{ label: string; durationMs: number }>;
@@ -157,7 +201,6 @@ function sendStats(): void {
   const driftMin = Math.round(
     log.filter(e => e.label === 'negative').reduce((s, e) => s + e.durationMs, 0) / 60_000,
   );
-  const app = getCurrentApp() as { name: string; durationMins: number };
 
   const priorities = (getActiveGoals() as Array<{ text: string; impactScore: number; status: string }>)
     .filter(g => g.status === 'active')
@@ -169,14 +212,14 @@ function sendStats(): void {
     .slice(0, 4)
     .map(c => c.text);
 
+  const openApps = await getOpenApps();
+
   orbWindow.webContents.send('axon:stats', {
     focusMin,
     driftMin,
-    currentApp:        app.name,
-    productivityScore: getProductivityScore() as number,
-    sessionMin:        Math.round(app.durationMins),
     priorities,
     commitments,
+    openApps,
   });
 }
 
@@ -300,6 +343,7 @@ app.on('ready', () => {
     setOrbWindow(orbWindow);
     setConvOrbWindow(orbWindow);
     setTtsOrbWindow(orbWindow);
+    setSubAgentOrbWindow(orbWindow);
     // Send initial stats once renderer has loaded, then every 30 s
     setTimeout(() => sendStats(), 4000);
     setInterval(sendStats, 30_000);

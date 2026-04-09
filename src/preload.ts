@@ -12,6 +12,10 @@ contextBridge.exposeInMainWorld('axon', {
   minimiseWindow: () => ipcRenderer.send('orb:minimise'),
   toPill: () => ipcRenderer.send('orb:to-pill'),
   fromPill: () => ipcRenderer.send('orb:from-pill'),
+  onActivityUpdate: (cb: (activity: string) => void) =>
+    ipcRenderer.on('axon:activity', (_e, activity) => cb(activity)),
+  onAgentsUpdate: (cb: (agents: unknown[]) => void) =>
+    ipcRenderer.on('axon:agents', (_e, agents) => cb(agents)),
   onMicStart: (cb: () => void) =>
     ipcRenderer.on('mic:start', () => cb()),
   onMicStop: (cb: () => void) =>

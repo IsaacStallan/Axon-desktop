@@ -4,31 +4,37 @@ export {};
 declare global {
   interface Window {
     axon: {
-      onStateChange:   (cb: (state: string) => void) => void;
-      onMessage:       (cb: (msg: string) => void) => void;
-      onStatsUpdate:   (cb: (stats: AxonStats) => void) => void;
-      tapOrb:          () => void;
-      ready:           () => void;
-      minimiseWindow:  () => void;
-      toPill:          () => void;
-      fromPill:        () => void;
-      onMicStart:      (cb: () => void) => void;
-      onMicStop:       (cb: () => void) => void;
-      sendMicChunk:    (chunk: Uint8Array) => void;
-      sendMicError:    (msg: string) => void;
-      sendMicReady:    () => void;
+      onStateChange:    (cb: (state: string) => void) => void;
+      onMessage:        (cb: (msg: string) => void) => void;
+      onStatsUpdate:    (cb: (stats: AxonStats) => void) => void;
+      onActivityUpdate: (cb: (activity: string) => void) => void;
+      onAgentsUpdate:   (cb: (agents: AgentStatus[]) => void) => void;
+      tapOrb:           () => void;
+      ready:            () => void;
+      minimiseWindow:   () => void;
+      toPill:           () => void;
+      fromPill:         () => void;
+      onMicStart:       (cb: () => void) => void;
+      onMicStop:        (cb: () => void) => void;
+      sendMicChunk:     (chunk: Uint8Array) => void;
+      sendMicError:     (msg: string) => void;
+      sendMicReady:     () => void;
     };
   }
 }
 
 interface AxonStats {
-  focusMin:          number;
-  driftMin:          number;
-  currentApp:        string;
-  productivityScore: number;
-  sessionMin:        number;
-  priorities:        Array<{ text: string; impactScore: number }>;
-  commitments:       string[];
+  focusMin:   number;
+  driftMin:   number;
+  priorities: Array<{ text: string; impactScore: number }>;
+  commitments: string[];
+  openApps:   Array<{ name: string; lastUsed: number; isActive: boolean }>;
+}
+
+interface AgentStatus {
+  id:          string;
+  description: string;
+  status:      'running' | 'completed' | 'failed';
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -87,28 +93,45 @@ window.axon.onStatsUpdate((stats: AxonStats) => {
 
   const focusEl = get('focus-time');
   const driftEl = get('drift-time');
-  const appEl   = get('current-app');
-  const fillEl  = get('productivity-fill') as HTMLElement | null;
-  const sessEl  = get('session-time');
   const prList  = get('priorities-list');
   const cmList  = get('commitments-list');
+  const actRow  = get('apps-active-row');
+  const inactRow = get('apps-inactive-row');
 
   if (focusEl) focusEl.textContent = `${stats.focusMin}m`;
   if (driftEl) driftEl.textContent = `${stats.driftMin}m`;
-  if (appEl)   appEl.textContent   = stats.currentApp || '—';
-  if (fillEl)  fillEl.style.width  = `${Math.min(100, stats.productivityScore)}%`;
-  if (sessEl)  sessEl.textContent  = `SESSION ${stats.sessionMin}min`;
 
+  // Open apps
+  const apps   = stats.openApps ?? [];
+  const active = apps.filter(a => a.isActive);
+  const inact  = apps.filter(a => !a.isActive);
+
+  if (actRow) {
+    actRow.innerHTML = active.length > 0
+      ? active.map(a => `<span class="app-chip active">● ${escapeHtml(a.name)}</span>`).join('')
+      : '';
+  }
+  if (inactRow) {
+    inactRow.innerHTML = inact.length > 0
+      ? inact.map(a => `<span class="app-chip inactive">○ ${escapeHtml(a.name)}</span>`).join('')
+      : '';
+  }
+
+  // Goals with bar + percentage
   if (prList) {
-    prList.innerHTML = (stats.priorities ?? []).map((p, i) => `
-      <div class="priority-item">
-        <span class="priority-num">0${i + 1}</span>
-        <span class="priority-text">${escapeHtml(p.text)}</span>
-        <div class="priority-bar-wrap">
-          <div class="priority-bar-fill" style="width:${(p.impactScore / 10) * 100}%"></div>
+    prList.innerHTML = (stats.priorities ?? []).map((p, i) => {
+      const pct = p.impactScore * 10;
+      return `
+        <div class="priority-item">
+          <span class="priority-num">0${i + 1}</span>
+          <span class="priority-text">${escapeHtml(p.text.slice(0, 28))}${p.text.length > 28 ? '…' : ''}</span>
+          <div class="priority-bar-wrap">
+            <div class="priority-bar-fill" style="width:${pct}%"></div>
+          </div>
+          <span class="priority-pct">${pct}%</span>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   }
 
   if (cmList) {
@@ -119,6 +142,35 @@ window.axon.onStatsUpdate((stats: AxonStats) => {
       </div>
     `).join('');
   }
+});
+
+// ── Activity updates ──────────────────────────────────────────────────────────
+
+window.axon.onActivityUpdate((activity: string) => {
+  const el = document.getElementById('axon-activity');
+  if (el) el.textContent = activity;
+});
+
+// ── Agent updates ─────────────────────────────────────────────────────────────
+
+window.axon.onAgentsUpdate((agents: AgentStatus[]) => {
+  const list = document.getElementById('agents-list');
+  if (!list) return;
+
+  if (agents.length === 0) {
+    list.innerHTML = '<div class="no-agents">no agents active</div>';
+    return;
+  }
+
+  list.innerHTML = agents.map(a => {
+    const icon = a.status === 'running'   ? '<span class="agent-spin">⟳</span>'
+               : a.status === 'completed' ? '✓'
+               : '✗';
+    const cls  = a.status === 'running'   ? 'agent-running'
+               : a.status === 'completed' ? 'agent-done'
+               : 'agent-failed';
+    return `<div class="agent-item ${cls}">${icon} <span>${escapeHtml(a.description)}</span></div>`;
+  }).join('');
 });
 
 // ── Waveform canvas ───────────────────────────────────────────────────────────

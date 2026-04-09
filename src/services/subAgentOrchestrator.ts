@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { BrowserWindow } from 'electron';
 import {
   browserOpen, browserSearch, browserClick, browserType,
   browserExtract, browserScroll, browserWait,
@@ -8,8 +9,55 @@ import {
 
 console.log('[SubAgentOrchestrator] module loaded');
 
+// ── Orb window reference (for axon:agents IPC) ────────────────────────────────
+
+let orbWin: BrowserWindow | null = null;
+
+export function setOrbWindow(win: BrowserWindow): void {
+  orbWin = win;
+}
+
 const execAsync = promisify(exec);
 const client    = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '', maxRetries: 3 });
+
+// ── Agent state tracking ──────────────────────────────────────────────────────
+
+interface AgentEntry {
+  id:          string;
+  description: string;
+  status:      'running' | 'completed' | 'failed';
+}
+
+const liveAgents = new Map<string, AgentEntry>();
+
+function broadcastAgents(): void {
+  const agents = [...liveAgents.values()];
+  orbWin?.webContents.send('axon:agents', agents);
+}
+
+function agentStart(id: string, description: string): void {
+  liveAgents.set(id, { id, description, status: 'running' });
+  orbWin?.webContents.send('axon:activity', `Running ${liveAgents.size} agent${liveAgents.size > 1 ? 's' : ''}…`);
+  broadcastAgents();
+}
+
+function agentDone(id: string, success: boolean): void {
+  const entry = liveAgents.get(id);
+  if (entry) {
+    entry.status = success ? 'completed' : 'failed';
+    broadcastAgents();
+    // Remove completed/failed agents after a short display window
+    setTimeout(() => {
+      liveAgents.delete(id);
+      if (liveAgents.size === 0) {
+        orbWin?.webContents.send('axon:agents', []);
+        orbWin?.webContents.send('axon:activity', 'Monitoring your activity');
+      } else {
+        broadcastAgents();
+      }
+    }, 4000);
+  }
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -136,6 +184,7 @@ async function executeSubAgentTool(name: string, input: Record<string, string>):
 
 async function executeAgent(task: SubTask, priorResults: AgentResult[]): Promise<AgentResult> {
   console.log(`[SubAgent] running task ${task.id}: ${task.instruction.slice(0, 60)}`);
+  agentStart(task.id, task.instruction.slice(0, 60));
 
   const context = priorResults.length > 0
     ? `\n\nContext from completed tasks:\n${priorResults.map(r => `Task ${r.taskId}: ${r.output.slice(0, 500)}`).join('\n\n')}`
@@ -183,10 +232,12 @@ async function executeAgent(task: SubTask, priorResults: AgentResult[]): Promise
     }
 
     const text = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text ?? '';
+    agentDone(task.id, true);
     return { taskId: task.id, success: true, output: text };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
     console.warn(`[SubAgent] task ${task.id} failed:`, error);
+    agentDone(task.id, false);
     return { taskId: task.id, success: false, output: '', error };
   }
 }

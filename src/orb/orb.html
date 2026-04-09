@@ -9,11 +9,12 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --cyan:       #00D4FF;
-      --border:     #004455;
-      --bg:         #000000;
-      --text:       #CCCCCC;
-      --text-hi:    #FFFFFF;
+      --cyan:    #00D4FF;
+      --border:  #004455;
+      --bg:      #000000;
+      --text:    #CCCCCC;
+      --text-hi: #FFFFFF;
+      --dim:     #444444;
     }
 
     html, body {
@@ -129,7 +130,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 20px 0 18px;
+      padding: 14px 0 12px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
       cursor: pointer;
@@ -140,115 +141,124 @@
       display: block;
     }
 
-    /* ── Stats row ────────────────────────────────────────────────────────────── */
+    /* ── Axon status bar ─────────────────────────────────────────────────────── */
+    #axon-status-bar {
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      height: 28px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      gap: 6px;
+    }
+
+    #axon-status-bar::before {
+      content: '▸';
+      font-size: 9px;
+      color: var(--cyan);
+      opacity: 0.7;
+      flex-shrink: 0;
+    }
+
+    #axon-activity {
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      color: var(--text);
+      opacity: 0.75;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Stats row (focus / drift) ───────────────────────────────────────────── */
     #stats-row {
       display: flex;
-      height: 78px;
+      height: 44px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
 
-    #today-stats {
-      width: 110px;
-      padding: 10px 12px;
-      border-right: 1px solid var(--border);
+    .stat-block {
+      flex: 1;
       display: flex;
-      flex-direction: column;
+      align-items: center;
       justify-content: center;
-      gap: 2px;
+      gap: 6px;
+      padding: 0 12px;
     }
 
-    #live-stats {
-      flex: 1;
-      padding: 10px 14px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      gap: 5px;
+    .stat-block + .stat-block {
+      border-left: 1px solid var(--border);
     }
 
     .stat-label {
       font-size: 9px;
       letter-spacing: 2px;
       color: var(--text);
-      opacity: 0.55;
+      opacity: 0.45;
     }
 
     .stat-value {
-      font-size: 14px;
+      font-size: 13px;
       color: var(--cyan);
       letter-spacing: 1px;
     }
 
-    #current-app {
-      font-size: 11px;
-      color: var(--text-hi);
-      letter-spacing: 1px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    #productivity-bar {
-      height: 3px;
-      background: var(--border);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    #productivity-fill {
-      height: 100%;
-      background: var(--cyan);
-      width: 0%;
-      transition: width 1s ease;
-    }
-
-    #session-time {
-      font-size: 9px;
-      letter-spacing: 1px;
-      color: var(--text);
-      opacity: 0.6;
-    }
-
-    /* ── Priorities ───────────────────────────────────────────────────────────── */
-    #priorities-section {
+    /* ── Open apps ───────────────────────────────────────────────────────────── */
+    #open-apps-section {
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
+      padding-bottom: 6px;
     }
 
-    /* ── Commitments ──────────────────────────────────────────────────────────── */
-    #commitments-section {
-      flex: 1;
-      overflow-y: auto;
-      border-bottom: 1px solid var(--border);
-      min-height: 0;
-    }
-
-    #commitments-section::-webkit-scrollbar { width: 3px; }
-    #commitments-section::-webkit-scrollbar-track { background: transparent; }
-    #commitments-section::-webkit-scrollbar-thumb { background: var(--border); }
-
-    /* ── Shared section styles ────────────────────────────────────────────────── */
     .section-label {
       font-size: 9px;
       letter-spacing: 3px;
       color: var(--text);
       opacity: 0.45;
-      padding: 8px 12px 4px;
+      padding: 6px 12px 3px;
+    }
+
+    .apps-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 8px;
+      padding: 2px 12px;
+      min-height: 16px;
+    }
+
+    .app-chip {
+      font-size: 9px;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+
+    .app-chip.active {
+      color: var(--cyan);
+    }
+
+    .app-chip.inactive {
+      color: var(--dim);
+    }
+
+    /* ── Goals (formerly Priorities) ─────────────────────────────────────────── */
+    #priorities-section {
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
 
     .priority-item {
       display: flex;
       align-items: center;
-      padding: 5px 12px;
-      gap: 8px;
+      padding: 4px 12px;
+      gap: 6px;
     }
 
     .priority-num {
       font-size: 9px;
       color: var(--cyan);
       opacity: 0.6;
-      width: 18px;
+      width: 16px;
       flex-shrink: 0;
     }
 
@@ -259,28 +269,89 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.3px;
     }
 
     .priority-bar-wrap {
-      width: 58px;
-      height: 3px;
+      width: 48px;
+      height: 4px;
       background: var(--border);
       flex-shrink: 0;
-      border-radius: 1px;
+      border-radius: 2px;
       overflow: hidden;
     }
 
     .priority-bar-fill {
       height: 100%;
       background: var(--cyan);
-      border-radius: 1px;
+      border-radius: 2px;
     }
+
+    .priority-pct {
+      font-size: 9px;
+      color: var(--cyan);
+      letter-spacing: 0.5px;
+      width: 28px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* ── Agents ───────────────────────────────────────────────────────────────── */
+    #agents-section {
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      min-height: 50px;
+    }
+
+    #agents-list {
+      padding: 0 12px 6px;
+    }
+
+    .no-agents {
+      font-size: 9px;
+      color: var(--dim);
+      letter-spacing: 1px;
+      padding: 3px 0;
+    }
+
+    .agent-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 9px;
+      letter-spacing: 0.5px;
+      padding: 2px 0;
+    }
+
+    .agent-item.agent-running { color: var(--cyan); }
+    .agent-item.agent-done    { color: #00FFAA; }
+    .agent-item.agent-failed  { color: #FF4444; }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+
+    .agent-spin {
+      display: inline-block;
+      animation: spin 1s linear infinite;
+    }
+
+    /* ── Commitments ──────────────────────────────────────────────────────────── */
+    #commitments-section {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    #commitments-section::-webkit-scrollbar { width: 3px; }
+    #commitments-section::-webkit-scrollbar-track { background: transparent; }
+    #commitments-section::-webkit-scrollbar-thumb { background: var(--border); }
 
     .commitment-item {
       display: flex;
       align-items: flex-start;
-      padding: 5px 12px;
+      padding: 4px 12px;
       gap: 7px;
     }
 
@@ -378,27 +449,40 @@
       <canvas id="waveform-canvas" width="200" height="200"></canvas>
     </div>
 
-    <!-- Stats row -->
+    <!-- Axon status bar -->
+    <div id="axon-status-bar">
+      <span id="axon-activity">Monitoring your activity</span>
+    </div>
+
+    <!-- Focus / Drift stats -->
     <div id="stats-row">
-      <div id="today-stats">
+      <div class="stat-block">
         <div class="stat-label">FOCUS</div>
         <div class="stat-value" id="focus-time">0m</div>
+      </div>
+      <div class="stat-block">
         <div class="stat-label">DRIFT</div>
         <div class="stat-value" id="drift-time">0m</div>
       </div>
-      <div id="live-stats">
-        <div id="current-app">—</div>
-        <div id="productivity-bar">
-          <div id="productivity-fill"></div>
-        </div>
-        <div id="session-time">SESSION 0min</div>
-      </div>
     </div>
 
-    <!-- Priorities -->
+    <!-- Open apps -->
+    <div id="open-apps-section">
+      <div class="section-label">OPEN APPS</div>
+      <div class="apps-row" id="apps-active-row"></div>
+      <div class="apps-row" id="apps-inactive-row"></div>
+    </div>
+
+    <!-- Goals -->
     <div id="priorities-section">
-      <div class="section-label">PRIORITIES</div>
+      <div class="section-label">GOALS</div>
       <div id="priorities-list"></div>
+    </div>
+
+    <!-- Agents -->
+    <div id="agents-section">
+      <div class="section-label">AGENTS</div>
+      <div id="agents-list"><div class="no-agents">no agents active</div></div>
     </div>
 
     <!-- Commitments -->
