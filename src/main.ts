@@ -73,12 +73,12 @@ function createOrbWindow(): BrowserWindow {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
   const win = new BrowserWindow({
-    width:           520,
-    height:          1000,
-    minWidth:        480,
-    minHeight:       900,
-    x:               Math.max(0, width  - 540),
-    y:               Math.max(0, height - 1020),
+    width:           600,
+    height:          900,
+    minWidth:        500,
+    minHeight:       600,
+    x:               Math.max(0, width  - 620),
+    y:               Math.max(0, height - 920),
     frame:           false,
     transparent:     true,
     alwaysOnTop:     true,
@@ -299,8 +299,8 @@ ipcMain.on('orb:to-pill', () => {
 ipcMain.on('orb:from-pill', () => {
   if (!orbWindow) return;
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  orbWindow.setSize(520, 1000);
-  orbWindow.setPosition(Math.max(0, width - 540), Math.max(0, height - 1020));
+  orbWindow.setSize(600, 900);
+  orbWindow.setPosition(Math.max(0, width - 620), Math.max(0, height - 920));
 });
 
 // ── Second-instance focus (production only) ──────────────────────────────────

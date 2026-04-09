@@ -244,15 +244,49 @@ window.axon.onAgentsUpdate((agents: AgentStatus[]) => {
 });
 
 // ── Waveform canvas ───────────────────────────────────────────────────────────
+// All geometry is derived from the canvas's current pixel size so it scales
+// automatically when the user resizes the window.
 
-const canvas   = document.getElementById('waveform-canvas') as HTMLCanvasElement;
-const ctx      = canvas.getContext('2d')!;
-const N_BARS   = 64;
-const CX       = 130;
-const CY       = 130;
-const R_INNER  = 72;   // where bars start
-const R_MAX    = 118;  // max bar tip radius
-const BAR_W    = 1.8;
+const canvas = document.getElementById('waveform-canvas') as HTMLCanvasElement;
+const ctx    = canvas.getContext('2d')!;
+const N_BARS = 64;
+
+// Mutable geometry — recalculated by resizeCanvas() via ResizeObserver
+let CX      = 130;
+let CY      = 130;
+let R_INNER = 72;
+let R_MAX   = 118;
+let RING1   = 124;
+let RING2   = 132;
+let BAR_W   = 1.8;
+let DOT_R   = 3;
+
+/** Resize the canvas backing buffer to match its CSS display size. */
+function resizeCanvas(): void {
+  const container = document.getElementById('waveform-container') as HTMLElement;
+  const raw       = container.clientWidth;
+  const size      = Math.min(raw, 300);          // cap at 300px — matches CSS max-width
+  const dpr       = window.devicePixelRatio || 1;
+
+  canvas.width  = Math.round(size * dpr);
+  canvas.height = Math.round(size * dpr);
+  ctx.scale(dpr, dpr);                           // reset transform after resize
+
+  const half = size / 2;
+  CX      = half;
+  CY      = half;
+  R_INNER = half * 0.554;
+  R_MAX   = half * 0.908;
+  RING1   = half * 0.954;
+  RING2   = half * 1.015;
+  BAR_W   = Math.max(1.2, half * 0.014);
+  DOT_R   = Math.max(2, half * 0.023);
+}
+
+// Run once immediately, then watch for window resize
+resizeCanvas();
+new ResizeObserver(() => resizeCanvas())
+  .observe(document.getElementById('waveform-container') as HTMLElement);
 
 const barEnergy    = new Float32Array(N_BARS);
 const targetEnergy = new Float32Array(N_BARS);
@@ -295,14 +329,15 @@ function lerpEnergies(): void {
 }
 
 function drawFrame(): void {
-  ctx.clearRect(0, 0, 260, 260);
+  // CX*2 = canvas logical size (dpr scaling already applied via ctx.scale in resizeCanvas)
+  ctx.clearRect(0, 0, CX * 2, CY * 2);
 
   // ── Rotating arc rings ─────────────────────────────────────────────────────
   // Two rings with 4 segments each, gaps give the targeting sight look.
   const rotCW  =  frameCount * 0.005;
   const rotCCW = -frameCount * 0.007;
 
-  const ringConfig: [number, number][] = [[124, rotCW], [132, rotCCW]];
+  const ringConfig: [number, number][] = [[RING1, rotCW], [RING2, rotCCW]];
   for (const [r, rot] of ringConfig) {
     ctx.strokeStyle = 'rgba(0, 68, 85, 0.9)';
     ctx.lineWidth   = 1;
@@ -376,7 +411,7 @@ function drawFrame(): void {
   // ── Centre dot ──────────────────────────────────────────────────────────────
   const dotAlpha = currentState === 'idle' ? 0.35 : 0.75;
   ctx.beginPath();
-  ctx.arc(CX, CY, 3, 0, Math.PI * 2);
+  ctx.arc(CX, CY, DOT_R, 0, Math.PI * 2);
   ctx.fillStyle = `rgba(0, 212, 255, ${dotAlpha})`;
   ctx.fill();
 }

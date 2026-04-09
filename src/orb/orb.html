@@ -19,7 +19,8 @@
     }
 
     html, body {
-      width: 520px;
+      width: 100%;
+      height: 100%;
       background: transparent;
       overflow: hidden;
       user-select: none;
@@ -29,8 +30,8 @@
 
     /* ── Main panel ──────────────────────────────────────────────────────────── */
     #panel {
-      width: 520px;
-      height: 1000px;
+      width: 100%;
+      height: 100vh;
       background: #000000;
       border: 1px solid var(--border);
       display: flex;
@@ -57,6 +58,7 @@
 
     /* ── Header ──────────────────────────────────────────────────────────────── */
     #header {
+      width: 100%;
       display: flex;
       align-items: center;
       padding: 0 16px;
@@ -128,6 +130,7 @@
 
     /* ── Waveform ─────────────────────────────────────────────────────────────── */
     #waveform-container {
+      width: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -138,12 +141,17 @@
       -webkit-app-region: no-drag;
     }
 
+    /* Canvas fills a square that is min(100%, 300px) wide */
     #waveform-canvas {
       display: block;
+      width: 100%;
+      height: auto;
+      max-width: 300px;
     }
 
     /* ── Axon status bar ─────────────────────────────────────────────────────── */
     #axon-status-bar {
+      width: 100%;
       display: flex;
       align-items: center;
       padding: 0 16px;
@@ -173,6 +181,7 @@
 
     /* ── Stats row (focus / drift) ───────────────────────────────────────────── */
     #stats-row {
+      width: 100%;
       display: flex;
       height: 50px;
       border-bottom: 1px solid var(--border);
@@ -205,8 +214,41 @@
       letter-spacing: 1px;
     }
 
+    /* ── Two-column stats grid (PERFORMANCE + CAPACITY side by side) ─────────── */
+    #stats-grid {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    /* Collapse to single column below 480px panel width */
+    @media (max-width: 480px) {
+      #stats-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .grid-section {
+      border-bottom: none;  /* handled by parent border */
+    }
+
+    .grid-section + .grid-section {
+      border-left: 1px solid var(--border);
+    }
+
+    /* Single-column fallback: add bottom border between sections */
+    @media (max-width: 480px) {
+      .grid-section + .grid-section {
+        border-left: none;
+        border-top: 1px solid var(--border);
+      }
+    }
+
     /* ── Shared section styles ────────────────────────────────────────────────── */
     .section {
+      width: 100%;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
@@ -219,7 +261,7 @@
       padding: 10px 16px 6px;
     }
 
-    /* ── Performance + Capacity stat rows ────────────────────────────────────── */
+    /* ── Performance + Capacity panel rows ───────────────────────────────────── */
     .panel-list {
       padding: 0 16px 12px;
       display: flex;
@@ -235,10 +277,10 @@
 
     .panel-row-label {
       font-size: 9px;
-      letter-spacing: 1.5px;
+      letter-spacing: 1.2px;
       color: var(--text);
       opacity: 0.55;
-      width: 108px;
+      width: 96px;
       flex-shrink: 0;
     }
 
@@ -252,7 +294,7 @@
     .panel-row-value.cyan { color: var(--cyan); }
 
     .mini-bar-wrap {
-      width: 64px;
+      width: 48px;
       height: 4px;
       background: var(--border);
       border-radius: 2px;
@@ -269,6 +311,7 @@
 
     /* ── Open apps ───────────────────────────────────────────────────────────── */
     .apps-row {
+      width: 100%;
       display: flex;
       flex-wrap: wrap;
       gap: 4px 10px;
@@ -371,7 +414,7 @@
       animation: spin 1s linear infinite;
     }
 
-    /* ── Tasks (open commitments) ─────────────────────────────────────────────── */
+    /* ── Tasks ────────────────────────────────────────────────────────────────── */
     #tasks-section {
       flex: 1;
       overflow-y: auto;
@@ -404,7 +447,7 @@
       line-height: 1.45;
     }
 
-    /* ── Status dot state colours ─────────────────────────────────────────────── */
+    /* ── Status dot colours ───────────────────────────────────────────────────── */
     body.listening  #status-dot { background: var(--cyan); }
     body.thinking   #status-dot { background: #FFFFFF; }
     body.speaking   #status-dot { background: var(--green); }
@@ -478,9 +521,9 @@
       </div>
     </div>
 
-    <!-- Central waveform -->
+    <!-- Central waveform — canvas size managed by ResizeObserver in orb.ts -->
     <div id="waveform-container">
-      <canvas id="waveform-canvas" width="260" height="260"></canvas>
+      <canvas id="waveform-canvas"></canvas>
     </div>
 
     <!-- Axon status bar -->
@@ -500,16 +543,16 @@
       </div>
     </div>
 
-    <!-- Performance -->
-    <div class="section" id="performance-section">
-      <div class="section-label">PERFORMANCE</div>
-      <div class="panel-list" id="performance-list"></div>
-    </div>
-
-    <!-- Capacity -->
-    <div class="section" id="capacity-section">
-      <div class="section-label">CAPACITY</div>
-      <div class="panel-list" id="capacity-list"></div>
+    <!-- Performance + Capacity: two-column grid -->
+    <div id="stats-grid">
+      <div class="grid-section" id="performance-section">
+        <div class="section-label">PERFORMANCE</div>
+        <div class="panel-list" id="performance-list"></div>
+      </div>
+      <div class="grid-section" id="capacity-section">
+        <div class="section-label">CAPACITY</div>
+        <div class="panel-list" id="capacity-list"></div>
+      </div>
     </div>
 
     <!-- Open apps -->
