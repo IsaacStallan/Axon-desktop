@@ -174,14 +174,44 @@ end tell`;
     return `Spotify ${result}`;
   }
 
-  const encoded = encodeURIComponent(query);
-  const script  = `
-tell application "Spotify"
-  activate
-  open location "spotify:search:${encoded}"
-end tell`;
-  await osa(script);
-  return `Spotify: searching for "${query}"`;
+  const clientId     = process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error('SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET must be set in .env');
+  }
+
+  // 1. Client-credentials token (no user login needed)
+  const tokenResponse = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/x-www-form-urlencoded',
+      'Authorization': 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64'),
+    },
+    body: 'grant_type=client_credentials',
+  });
+  const { access_token } = await tokenResponse.json() as { access_token: string };
+
+  // 2. Search for the track
+  const searchResponse = await fetch(
+    `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=1`,
+    { headers: { 'Authorization': `Bearer ${access_token}` } },
+  );
+  const data = await searchResponse.json() as {
+    tracks: { items: Array<{ uri: string; name: string; artists: Array<{ name: string }> }> };
+  };
+  const items = data.tracks?.items;
+  if (!items || items.length === 0) throw new Error(`No Spotify tracks found for "${query}"`);
+
+  const trackUri  = items[0].uri;
+  const trackName = items[0].name;
+  const artist    = items[0].artists[0]?.name ?? '';
+
+  // 3. Activate Spotify, then play the exact URI
+  await execAsync(`osascript -e 'tell application "Spotify" to activate'`, { timeout: 5_000 });
+  await new Promise(r => setTimeout(r, 1000));
+  await execAsync(`osascript -e 'tell application "Spotify" to play track "${trackUri}"'`, { timeout: 10_000 });
+
+  return `Spotify: playing "${trackName}" by ${artist}`;
 }
 
 export async function appVscodeOpen(filePath: string): Promise<string> {
