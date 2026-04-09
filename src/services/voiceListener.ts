@@ -228,7 +228,7 @@ function runMacSession(onWakeWord: () => void, gen: number): Promise<void> {
       if (checkTimer) { clearInterval(checkTimer); checkTimer = undefined; }
       ipcMain.removeListener('mic:chunk', chunkHandler);
       ipcMain.removeListener('mic:error', errorHandler);
-      orbWin?.webContents.removeListener('did-finish-load', sendMicStart);
+      ipcMain.removeListener('mic:ready', sendMicStart);
       if (orbWin && !orbWin.isDestroyed()) {
         orbWin.webContents.send('mic:stop');
       }
@@ -254,15 +254,15 @@ function runMacSession(onWakeWord: () => void, gen: number): Promise<void> {
     const sendMicStart = () => {
       if (orbWin && !orbWin.isDestroyed()) {
         orbWin.webContents.send('mic:start');
-        console.log(`[VoiceListener] sent mic:start to renderer (gen ${gen})`);
+        console.log(`[VoiceListener] renderer ready — sent mic:start (gen ${gen})`);
       }
     };
 
-    if (rendererMicReady || !orbWin.webContents.isLoading()) {
+    if (rendererMicReady) {
       sendMicStart();
     } else {
-      console.log('[VoiceListener] waiting for renderer to finish loading...');
-      orbWin.webContents.once('did-finish-load', sendMicStart);
+      console.log('[VoiceListener] waiting for mic:ready from renderer...');
+      ipcMain.once('mic:ready', sendMicStart);
     }
 
     // Every WINDOW_MS, take the accumulated audio, run VAD + Whisper

@@ -283,10 +283,14 @@ function resizeCanvas(): void {
   DOT_R   = Math.max(2, half * 0.023);
 }
 
-// Run once immediately, then watch for window resize
+// Run once immediately, then watch for window resize.
+// Debounce prevents "ResizeObserver loop completed with undelivered notifications".
 resizeCanvas();
-new ResizeObserver(() => resizeCanvas())
-  .observe(document.getElementById('waveform-container') as HTMLElement);
+let resizeTimeout: ReturnType<typeof setTimeout> | undefined;
+new ResizeObserver(() => {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(() => resizeCanvas(), 100);
+}).observe(document.getElementById('waveform-container') as HTMLElement);
 
 const barEnergy    = new Float32Array(N_BARS);
 const targetEnergy = new Float32Array(N_BARS);
