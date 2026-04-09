@@ -18,6 +18,7 @@ import { getGoalsText, hasGoals, addGoal, type Goal } from './goalService';
 import { getOpenCommitmentsText, extractCommitmentsFromSession, detectCompletionsFromTranscript } from './commitmentTracker';
 import { isSleepWord } from './voiceListener';
 import { formatProactiveContext } from './proactiveContext';
+import { getCurrentScreenSummary } from './screenAwareness';
 
 
 
@@ -251,6 +252,7 @@ You have genuine visibility into what Isaac is doing on his computer right now.
 Reference this naturally and proactively — e.g. "I see you've been on YouTube for 40 minutes"
 or "you've been in VS Code all morning — what are you building?"
 Do NOT say you don't have access to his PC. You do. Use it.
+${getCurrentScreenSummary() ? `\nScreen context (vision, captured moments ago):\n${getCurrentScreenSummary()}` : ''}
 ${formatProactiveContext() ? `\nYour last proactive message (before this conversation started):\n${formatProactiveContext()}\nIf Isaac asks what you said, repeat it directly — do not ask him what you said.` : ''}
 
 What Axon knows about Isaac (learned over time):

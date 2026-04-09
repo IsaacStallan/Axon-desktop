@@ -25,6 +25,7 @@ import {
 } from './appControl';
 import { orchestrate } from './subAgentOrchestrator';
 import { updateWakeWord } from './voiceListener';
+import { analyseOnDemand } from './screenAwareness';
 
 // Pending draft waiting for verbal confirmation before send
 let pendingDraft: DraftResult | null = null;
@@ -449,6 +450,19 @@ export const TOOLS: Anthropic.Tool[] = [
     },
   },
 
+  // ── Screen awareness ──────────────────────────────────────────────────────────
+  {
+    name:        'analyse_screen',
+    description: "Take a screenshot and analyse what is currently on Isaac's screen. " +
+                 'Use when Isaac asks about something he\'s looking at, when screen context would help ' +
+                 'answer a question, or when you want to understand what he\'s currently doing.',
+    input_schema: {
+      type:       'object',
+      properties: {},
+      required:   [],
+    },
+  },
+
   // ── Sub-agent orchestration ───────────────────────────────────────────────────
   {
     name:        'spawn_agents',
@@ -837,6 +851,19 @@ export async function executeTool(
           console.warn('[Tool] set_wake_word: could not write .env:', e);
         }
         return `Done — I'll respond to "${word}" from now on.`;
+      }
+
+      // ── Screen awareness ───────────────────────────────────────────────────────
+
+      case 'analyse_screen': {
+        const ctx = await analyseOnDemand();
+        if (!ctx.activeApp) return 'Screen capture unavailable — check screen recording permission in System Settings.';
+        return (
+          `Screen: ${ctx.activeApp} — ${ctx.activity}. ` +
+          `Visible: ${ctx.visibleContent}. ` +
+          `Signal: ${ctx.productivitySignal}.` +
+          (ctx.notes ? ` Notes: ${ctx.notes}` : '')
+        );
       }
 
       // ── Sub-agent orchestration ────────────────────────────────────────────────

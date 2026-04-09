@@ -29,6 +29,7 @@ console.error('[Main] loading decisionEngine');
 const { startDecisionLoop } = require('./services/decisionEngine');
 console.error('[Main] loading voiceListener');
 const { startVoiceListener, stopVoiceListener, setOrbWindow } = require('./services/voiceListener');
+const { startScreenMonitor, setOrbWindow: setScreenOrbWindow } = require('./services/screenAwareness');
 console.error('[Main] loading conversationService');
 const { triggerConversation, stopConversation, setOrbWindow: setConvOrbWindow } = require('./services/conversationService');
 const { setOrbWindow: setTtsOrbWindow } = require('./services/elevenLabsService');
@@ -359,6 +360,7 @@ app.on('ready', () => {
     setConvOrbWindow(orbWindow);
     setTtsOrbWindow(orbWindow);
     setSubAgentOrbWindow(orbWindow);
+    setScreenOrbWindow(orbWindow);
     // Send initial stats once renderer has loaded, then every 30 s
     setTimeout(() => sendStats(), 4000);
     setInterval(sendStats, 30_000);
@@ -371,6 +373,8 @@ app.on('ready', () => {
     startDecisionLoop(beginConversation);
     console.log('[Main] starting briefing service');
     startBriefingService(beginConversation);
+    console.log('[Main] starting screen monitor');
+    startScreenMonitor();
     console.log('[Main] starting wake-word listener');
     startWakeWordListener();
 
