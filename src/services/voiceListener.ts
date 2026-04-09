@@ -41,23 +41,50 @@ export function setOrbWindow(win: BrowserWindow): void {
 
 // ── Wake-word patterns ────────────────────────────────────────────────────────
 
-const WAKE_PATTERNS = ['axon', 'hey ax', 'action', 'ax on', 'jackson'];
+// Dynamic custom wake word (from .env or updated at runtime)
+let customWakeWord: string | null = process.env.AXON_WAKE_WORD?.toLowerCase().trim() ?? null;
+
+const BASE_WAKE_VARIATIONS = ['hey axon', 'axon', 'hey ax', 'okay axon', 'action', 'ax on', 'jackson'];
+
+function getWakeVariations(): string[] {
+  if (customWakeWord && !BASE_WAKE_VARIATIONS.includes(customWakeWord)) {
+    return [customWakeWord, ...BASE_WAKE_VARIATIONS];
+  }
+  return BASE_WAKE_VARIATIONS;
+}
+
+export function updateWakeWord(word: string): void {
+  customWakeWord = word.toLowerCase().trim();
+  console.log(`[VoiceListener] wake word updated to: "${customWakeWord}"`);
+}
 
 function isWakeWord(transcript: string): boolean {
-  if (transcript.trim().length < 3) return false;
-  const t = transcript.toLowerCase();
-  return WAKE_PATTERNS.some(p => t.includes(p));
+  if (transcript.trim().length < 2) return false;
+  const t = transcript.toLowerCase().replace(/[^\w\s]/g, ' ');
+  return getWakeVariations().some(p => t.includes(p));
 }
 
 function extractCommandAfterWakeWord(transcript: string): string {
-  const lower = transcript.toLowerCase();
-  for (const pattern of WAKE_PATTERNS) {
+  const lower = transcript.toLowerCase().replace(/[^\w\s]/g, ' ');
+  for (const pattern of getWakeVariations()) {
     const idx = lower.indexOf(pattern);
     if (idx !== -1) {
       return transcript.slice(idx + pattern.length).replace(/^[\s,]+/, '').trim();
     }
   }
   return '';
+}
+
+// ── Sleep-word detection ──────────────────────────────────────────────────────
+
+const SLEEP_WORDS = [
+  'goodnight', 'good night', 'bye', 'cancel', 'go to sleep',
+  'stop listening', 'go idle', 'see ya', 'goodbye', "that's all",
+];
+
+export function isSleepWord(transcript: string): boolean {
+  const t = transcript.toLowerCase().replace(/[^\w\s]/g, ' ');
+  return SLEEP_WORDS.some(s => t.includes(s));
 }
 
 // ── SoX management ────────────────────────────────────────────────────────────
@@ -121,10 +148,11 @@ async function transcribeBuffer(pcm: Buffer): Promise<string> {
 
   try {
     fs.writeFileSync(tmpPath, wav);
+    const wakeHint = customWakeWord ? `${customWakeWord}, Axon, hey Axon` : 'Axon, hey Axon, action';
     const response = await client.audio.transcriptions.create({
       file:   fs.createReadStream(tmpPath),
       model:  'whisper-1',
-      prompt: 'Axon, hey Axon, action',  // bias towards wake word, reduces hallucinations
+      prompt: wakeHint,  // bias towards wake word, reduces hallucinations
     });
     return response.text.trim();
   } catch (e) {

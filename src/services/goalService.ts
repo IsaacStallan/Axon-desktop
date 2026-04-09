@@ -15,6 +15,7 @@ export interface Goal {
   updatedAt:   string;
   status:      'active' | 'achieved' | 'paused';
   notes:       string;
+  progress:    number;   // 0–100, actual completion percentage
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────────
@@ -55,6 +56,7 @@ export function addGoal(
     updatedAt:   new Date().toISOString(),
     status:      'active',
     notes,
+    progress:    0,
   };
   goals.push(goal);
   writeAll(goals);
@@ -71,7 +73,7 @@ export function getActiveGoals(): Goal[] {
 
 export function updateGoal(
   id:      string,
-  updates: Partial<Pick<Goal, 'status' | 'impactScore' | 'notes' | 'text'>>,
+  updates: Partial<Pick<Goal, 'status' | 'impactScore' | 'notes' | 'text' | 'progress'>>,
 ): boolean {
   const goals = readAll();
   const goal  = goals.find(g => g.id === id);
@@ -90,23 +92,11 @@ export function hasGoals(): boolean {
 }
 
 /**
- * Returns active goals with an estimated completion percentage.
- * Heuristic: impactScore * 10 as base, clamped to 95.
- * Cross-referenced with time elapsed vs horizon and age of goal.
+ * Returns active goals with their actual progress percentages (0–100).
+ * Progress is updated manually via goal_update_progress tool or the weekly review.
  */
 export function getGoalProgress(): Array<Goal & { progress: number }> {
-  const horizonDays: Record<Goal['timeHorizon'], number> = {
-    'this week': 7, 'this month': 30, 'this year': 365, 'life': 3650,
-  };
-  return getActiveGoals().map(g => {
-    const ageMs    = Date.now() - new Date(g.addedAt).getTime();
-    const ageDays  = ageMs / (1000 * 60 * 60 * 24);
-    const maxDays  = horizonDays[g.timeHorizon];
-    // Base = impactScore * 10; time-in-horizon nudges it slightly up to show momentum
-    const timePct  = Math.min(1, ageDays / maxDays);
-    const progress = Math.min(95, Math.round(g.impactScore * 10 + timePct * 5));
-    return { ...g, progress };
-  });
+  return getActiveGoals().map(g => ({ ...g, progress: g.progress ?? 0 }));
 }
 
 /**

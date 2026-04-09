@@ -15,10 +15,11 @@
       --text:    #CCCCCC;
       --text-hi: #FFFFFF;
       --dim:     #444444;
+      --green:   #00FFAA;
     }
 
     html, body {
-      width: 420px;
+      width: 520px;
       background: transparent;
       overflow: hidden;
       user-select: none;
@@ -28,8 +29,8 @@
 
     /* ── Main panel ──────────────────────────────────────────────────────────── */
     #panel {
-      width: 420px;
-      height: 680px;
+      width: 520px;
+      height: 1000px;
       background: #000000;
       border: 1px solid var(--border);
       display: flex;
@@ -58,18 +59,18 @@
     #header {
       display: flex;
       align-items: center;
-      padding: 0 12px;
-      height: 44px;
+      padding: 0 16px;
+      height: 48px;
       border-bottom: 1px solid var(--border);
       -webkit-app-region: drag;
       flex-shrink: 0;
-      gap: 8px;
+      gap: 10px;
     }
 
     #title {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: bold;
-      letter-spacing: 4px;
+      letter-spacing: 5px;
       color: var(--cyan);
     }
 
@@ -91,7 +92,7 @@
     }
 
     #clock {
-      font-size: 11px;
+      font-size: 12px;
       letter-spacing: 1px;
       color: var(--text-hi);
       -webkit-app-region: no-drag;
@@ -107,8 +108,8 @@
       background: none;
       border: 1px solid var(--border);
       color: var(--text);
-      width: 22px;
-      height: 22px;
+      width: 24px;
+      height: 24px;
       font-size: 11px;
       cursor: pointer;
       border-radius: 2px;
@@ -130,7 +131,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 14px 0 12px;
+      padding: 20px 0 18px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
       cursor: pointer;
@@ -145,11 +146,11 @@
     #axon-status-bar {
       display: flex;
       align-items: center;
-      padding: 0 12px;
-      height: 28px;
+      padding: 0 16px;
+      height: 32px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
-      gap: 6px;
+      gap: 8px;
     }
 
     #axon-status-bar::before {
@@ -161,10 +162,10 @@
     }
 
     #axon-activity {
-      font-size: 9px;
+      font-size: 10px;
       letter-spacing: 1.5px;
       color: var(--text);
-      opacity: 0.75;
+      opacity: 0.8;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -173,7 +174,7 @@
     /* ── Stats row (focus / drift) ───────────────────────────────────────────── */
     #stats-row {
       display: flex;
-      height: 44px;
+      height: 50px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
@@ -183,8 +184,8 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      padding: 0 12px;
+      gap: 8px;
+      padding: 0 16px;
     }
 
     .stat-block + .stat-block {
@@ -199,16 +200,15 @@
     }
 
     .stat-value {
-      font-size: 13px;
+      font-size: 14px;
       color: var(--cyan);
       letter-spacing: 1px;
     }
 
-    /* ── Open apps ───────────────────────────────────────────────────────────── */
-    #open-apps-section {
+    /* ── Shared section styles ────────────────────────────────────────────────── */
+    .section {
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
-      padding-bottom: 6px;
     }
 
     .section-label {
@@ -216,15 +216,64 @@
       letter-spacing: 3px;
       color: var(--text);
       opacity: 0.45;
-      padding: 6px 12px 3px;
+      padding: 10px 16px 6px;
     }
 
+    /* ── Performance + Capacity stat rows ────────────────────────────────────── */
+    .panel-list {
+      padding: 0 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .panel-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .panel-row-label {
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      color: var(--text);
+      opacity: 0.55;
+      width: 108px;
+      flex-shrink: 0;
+    }
+
+    .panel-row-value {
+      font-size: 10px;
+      color: var(--text-hi);
+      letter-spacing: 0.5px;
+      flex: 1;
+    }
+
+    .panel-row-value.cyan { color: var(--cyan); }
+
+    .mini-bar-wrap {
+      width: 64px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .mini-bar-fill {
+      height: 100%;
+      background: var(--cyan);
+      border-radius: 2px;
+      transition: width 1s ease;
+    }
+
+    /* ── Open apps ───────────────────────────────────────────────────────────── */
     .apps-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px 8px;
-      padding: 2px 12px;
-      min-height: 16px;
+      gap: 4px 10px;
+      padding: 2px 16px;
+      min-height: 18px;
     }
 
     .app-chip {
@@ -233,32 +282,22 @@
       white-space: nowrap;
     }
 
-    .app-chip.active {
-      color: var(--cyan);
-    }
+    .app-chip.active   { color: var(--cyan); }
+    .app-chip.inactive { color: var(--dim); }
 
-    .app-chip.inactive {
-      color: var(--dim);
-    }
-
-    /* ── Goals (formerly Priorities) ─────────────────────────────────────────── */
-    #priorities-section {
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
+    /* ── Goals ────────────────────────────────────────────────────────────────── */
     .priority-item {
       display: flex;
       align-items: center;
-      padding: 4px 12px;
-      gap: 6px;
+      padding: 5px 16px;
+      gap: 8px;
     }
 
     .priority-num {
       font-size: 9px;
       color: var(--cyan);
       opacity: 0.6;
-      width: 16px;
+      width: 18px;
       flex-shrink: 0;
     }
 
@@ -273,7 +312,7 @@
     }
 
     .priority-bar-wrap {
-      width: 48px;
+      width: 56px;
       height: 4px;
       background: var(--border);
       flex-shrink: 0;
@@ -285,26 +324,21 @@
       height: 100%;
       background: var(--cyan);
       border-radius: 2px;
+      transition: width 1s ease;
     }
 
     .priority-pct {
       font-size: 9px;
       color: var(--cyan);
       letter-spacing: 0.5px;
-      width: 28px;
+      width: 30px;
       text-align: right;
       flex-shrink: 0;
     }
 
     /* ── Agents ───────────────────────────────────────────────────────────────── */
-    #agents-section {
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-      min-height: 50px;
-    }
-
     #agents-list {
-      padding: 0 12px 6px;
+      padding: 0 16px 10px;
     }
 
     .no-agents {
@@ -320,11 +354,11 @@
       gap: 6px;
       font-size: 9px;
       letter-spacing: 0.5px;
-      padding: 2px 0;
+      padding: 3px 0;
     }
 
     .agent-item.agent-running { color: var(--cyan); }
-    .agent-item.agent-done    { color: #00FFAA; }
+    .agent-item.agent-done    { color: var(--green); }
     .agent-item.agent-failed  { color: #FF4444; }
 
     @keyframes spin {
@@ -337,22 +371,22 @@
       animation: spin 1s linear infinite;
     }
 
-    /* ── Commitments ──────────────────────────────────────────────────────────── */
-    #commitments-section {
+    /* ── Tasks (open commitments) ─────────────────────────────────────────────── */
+    #tasks-section {
       flex: 1;
       overflow-y: auto;
       min-height: 0;
     }
 
-    #commitments-section::-webkit-scrollbar { width: 3px; }
-    #commitments-section::-webkit-scrollbar-track { background: transparent; }
-    #commitments-section::-webkit-scrollbar-thumb { background: var(--border); }
+    #tasks-section::-webkit-scrollbar { width: 3px; }
+    #tasks-section::-webkit-scrollbar-track { background: transparent; }
+    #tasks-section::-webkit-scrollbar-thumb { background: var(--border); }
 
     .commitment-item {
       display: flex;
       align-items: flex-start;
-      padding: 4px 12px;
-      gap: 7px;
+      padding: 5px 16px;
+      gap: 8px;
     }
 
     .commitment-arrow {
@@ -367,19 +401,19 @@
       font-size: 10px;
       color: var(--text);
       letter-spacing: 0.3px;
-      line-height: 1.4;
+      line-height: 1.45;
     }
 
     /* ── Status dot state colours ─────────────────────────────────────────────── */
-    body.listening  #status-dot { background: #00D4FF; }
+    body.listening  #status-dot { background: var(--cyan); }
     body.thinking   #status-dot { background: #FFFFFF; }
-    body.speaking   #status-dot { background: #00FFAA; }
+    body.speaking   #status-dot { background: var(--green); }
     body.idle       #status-dot { background: #333333; }
     body.urgent     #status-dot { background: #FF4444; }
 
-    body.listening  #status-text { color: #00D4FF; }
+    body.listening  #status-text { color: var(--cyan); }
     body.thinking   #status-text { color: #CCCCCC; }
-    body.speaking   #status-text { color: #00FFAA; }
+    body.speaking   #status-text { color: var(--green); }
 
     /* ── Mini pill ────────────────────────────────────────────────────────────── */
     #mini-pill {
@@ -446,7 +480,7 @@
 
     <!-- Central waveform -->
     <div id="waveform-container">
-      <canvas id="waveform-canvas" width="200" height="200"></canvas>
+      <canvas id="waveform-canvas" width="260" height="260"></canvas>
     </div>
 
     <!-- Axon status bar -->
@@ -466,28 +500,40 @@
       </div>
     </div>
 
+    <!-- Performance -->
+    <div class="section" id="performance-section">
+      <div class="section-label">PERFORMANCE</div>
+      <div class="panel-list" id="performance-list"></div>
+    </div>
+
+    <!-- Capacity -->
+    <div class="section" id="capacity-section">
+      <div class="section-label">CAPACITY</div>
+      <div class="panel-list" id="capacity-list"></div>
+    </div>
+
     <!-- Open apps -->
-    <div id="open-apps-section">
+    <div class="section" id="open-apps-section" style="padding-bottom:10px">
       <div class="section-label">OPEN APPS</div>
       <div class="apps-row" id="apps-active-row"></div>
       <div class="apps-row" id="apps-inactive-row"></div>
     </div>
 
     <!-- Goals -->
-    <div id="priorities-section">
+    <div class="section" id="priorities-section">
       <div class="section-label">GOALS</div>
       <div id="priorities-list"></div>
     </div>
 
     <!-- Agents -->
-    <div id="agents-section">
+    <div class="section" id="agents-section">
       <div class="section-label">AGENTS</div>
       <div id="agents-list"><div class="no-agents">no agents active</div></div>
     </div>
 
-    <!-- Commitments -->
-    <div id="commitments-section">
-      <div class="section-label">OPEN COMMITMENTS</div>
+    <!-- Tasks -->
+    <div id="tasks-section">
+      <div class="section-label">TASKS</div>
       <div id="commitments-list"></div>
     </div>
 

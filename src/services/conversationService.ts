@@ -15,7 +15,8 @@ import { TOOLS, executeTool } from './toolService';
 import { killCurrentRecording } from './whisperService';
 import { getPendingTasksText } from './taskStore';
 import { getGoalsText, hasGoals, addGoal, type Goal } from './goalService';
-import { getOpenCommitmentsText, extractCommitmentsFromSession } from './commitmentTracker';
+import { getOpenCommitmentsText, extractCommitmentsFromSession, detectCompletionsFromTranscript } from './commitmentTracker';
+import { isSleepWord } from './voiceListener';
 import { formatProactiveContext } from './proactiveContext';
 
 
@@ -514,10 +515,17 @@ export async function triggerConversation(): Promise<void> {
       continue;
     }
 
-    const lower = transcript.toLowerCase();
-    if (lower.includes('bye axon') || lower.includes('stop listening') || lower.includes('goodbye axon')) {
-      console.log('[Conversation] stop phrase detected');
+    if (isSleepWord(transcript)) {
+      console.log('[Conversation] sleep word detected — returning to idle');
+      orbWin?.webContents.send('orb:state', 'idle');
+      orbWin?.webContents.send('axon:activity', 'Gone to sleep');
       break;
+    }
+
+    // Auto-detect completions in user speech before sending to Claude
+    const autoCompleted = detectCompletionsFromTranscript(transcript);
+    if (autoCompleted.length > 0) {
+      console.log('[Conversation] auto-marked done:', autoCompleted);
     }
 
     try {

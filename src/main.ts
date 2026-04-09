@@ -9,6 +9,7 @@ import {
   systemPreferences,
   session,
   powerMonitor,
+  globalShortcut,
 } from 'electron';
 import path from 'path';
 import { exec } from 'child_process';
@@ -34,6 +35,7 @@ const { setOrbWindow: setTtsOrbWindow } = require('./services/elevenLabsService'
 console.error('[Main] loading briefingService');
 const { startBriefingService } = require('./services/briefingService');
 const { setOrbWindow: setSubAgentOrbWindow } = require('./services/subAgentOrchestrator');
+const { getPerformanceStats, getCognitiveStats } = require('./services/behaviourModel');
 console.error('[Main] all imports done');
 
 // ── Global error handlers ─────────────────────────────────────────────────────
@@ -71,12 +73,12 @@ function createOrbWindow(): BrowserWindow {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
   const win = new BrowserWindow({
-    width:           420,
-    height:          680,
-    minWidth:        320,
-    minHeight:       400,
-    x:               Math.max(0, width  - 440),
-    y:               Math.max(0, height - 700),
+    width:           520,
+    height:          1000,
+    minWidth:        480,
+    minHeight:       900,
+    x:               Math.max(0, width  - 540),
+    y:               Math.max(0, height - 1020),
     frame:           false,
     transparent:     true,
     alwaysOnTop:     true,
@@ -194,7 +196,9 @@ export function setOrbState(state: 'idle' | 'listening' | 'speaking' | 'thinking
 async function sendStats(): Promise<void> {
   if (!orbWindow || orbWindow.isDestroyed()) return;
 
-  const log      = getSessionLog() as Array<{ label: string; durationMs: number }>;
+  const today  = new Date().toISOString().slice(0, 10);
+  const log    = getSessionLog() as Array<{ label: string; durationMs: number; startedAt: number }>;
+
   const focusMin = Math.round(
     log.filter(e => e.label === 'positive').reduce((s, e) => s + e.durationMs, 0) / 60_000,
   );
@@ -202,17 +206,26 @@ async function sendStats(): Promise<void> {
     log.filter(e => e.label === 'negative').reduce((s, e) => s + e.durationMs, 0) / 60_000,
   );
 
-  const priorities = (getActiveGoals() as Array<{ text: string; impactScore: number; status: string }>)
+  // Screen time: all entries from today, plus current running session
+  const screenTimeMins = Math.round(
+    log
+      .filter(e => new Date(e.startedAt).toISOString().startsWith(today))
+      .reduce((s, e) => s + e.durationMs, 0) / 60_000,
+  ) + Math.round((getCurrentApp() as { durationMins: number }).durationMins);
+
+  const priorities = (getActiveGoals() as Array<{ text: string; impactScore: number; status: string; progress: number }>)
     .filter(g => g.status === 'active')
     .sort((a, b) => b.impactScore - a.impactScore)
     .slice(0, 3)
-    .map(g => ({ text: g.text, impactScore: g.impactScore }));
+    .map(g => ({ text: g.text, impactScore: g.impactScore, progress: g.progress ?? 0 }));
 
   const commitments = (getOpenCommitments() as Array<{ text: string }>)
     .slice(0, 4)
     .map(c => c.text);
 
-  const openApps = await getOpenApps();
+  const openApps    = await getOpenApps();
+  const performance = getPerformanceStats();
+  const capacity    = getCognitiveStats(screenTimeMins);
 
   orbWindow.webContents.send('axon:stats', {
     focusMin,
@@ -220,6 +233,8 @@ async function sendStats(): Promise<void> {
     priorities,
     commitments,
     openApps,
+    performance,
+    capacity,
   });
 }
 
@@ -284,8 +299,8 @@ ipcMain.on('orb:to-pill', () => {
 ipcMain.on('orb:from-pill', () => {
   if (!orbWindow) return;
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  orbWindow.setSize(420, 680);
-  orbWindow.setPosition(Math.max(0, width - 440), Math.max(0, height - 700));
+  orbWindow.setSize(520, 1000);
+  orbWindow.setPosition(Math.max(0, width - 540), Math.max(0, height - 1020));
 });
 
 // ── Second-instance focus (production only) ──────────────────────────────────
@@ -359,6 +374,15 @@ app.on('ready', () => {
     console.log('[Main] starting wake-word listener');
     startWakeWordListener();
 
+    // Global hotkey — Cmd+Shift+A triggers conversation same as wake word
+    const hotkeyRegistered = globalShortcut.register('CommandOrControl+Shift+A', () => {
+      console.log('[Main] hotkey activated');
+      beginConversation();
+    });
+    if (!hotkeyRegistered) {
+      console.warn('[Main] globalShortcut CommandOrControl+Shift+A could not be registered');
+    }
+
     // ── Sleep / wake handling ────────────────────────────────────────────────
     // On suspend: stop the voice listener so the WebSocket and AudioContext are
     // cleanly torn down before the system sleeps.
@@ -389,4 +413,8 @@ app.on('window-all-closed', () => {
   // Keep running in tray — never quit unless Tray > Quit.
   // On Windows/Linux, Electron only auto-quits if this handler
   // calls app.quit(). By not calling it, the process stays alive.
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });

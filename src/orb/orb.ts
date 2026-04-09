@@ -26,9 +26,21 @@ declare global {
 interface AxonStats {
   focusMin:   number;
   driftMin:   number;
-  priorities: Array<{ text: string; impactScore: number }>;
+  priorities: Array<{ text: string; impactScore: number; progress: number }>;
   commitments: string[];
   openApps:   Array<{ name: string; lastUsed: number; isActive: boolean }>;
+  performance: {
+    peakFocusMins:  number;
+    flowStateCount: number;
+    deepWorkPct:    number;
+    streakDays:     number;
+  };
+  capacity: {
+    cognitiveCapacity: number;
+    lastBreakMins:     number;
+    screenTimeMins:    number;
+    followThrough:     number | null;
+  };
 }
 
 interface AgentStatus {
@@ -91,40 +103,96 @@ function escapeHtml(s: string): string {
 window.axon.onStatsUpdate((stats: AxonStats) => {
   const get = (id: string) => document.getElementById(id);
 
+  // ── Focus / Drift ───────────────────────────────────────────────────────────
   const focusEl = get('focus-time');
   const driftEl = get('drift-time');
-  const prList  = get('priorities-list');
-  const cmList  = get('commitments-list');
-  const actRow  = get('apps-active-row');
-  const inactRow = get('apps-inactive-row');
-
   if (focusEl) focusEl.textContent = `${stats.focusMin}m`;
   if (driftEl) driftEl.textContent = `${stats.driftMin}m`;
 
-  // Open apps
-  const apps   = stats.openApps ?? [];
-  const active = apps.filter(a => a.isActive);
-  const inact  = apps.filter(a => !a.isActive);
+  // ── Performance panel ───────────────────────────────────────────────────────
+  const perfList = get('performance-list');
+  if (perfList && stats.performance) {
+    const { peakFocusMins, flowStateCount, deepWorkPct, streakDays } = stats.performance;
+    const peakPct = Math.min(100, Math.round((peakFocusMins / 120) * 100));
+    const deepPct = deepWorkPct;
+    perfList.innerHTML = `
+      <div class="panel-row">
+        <span class="panel-row-label">PEAK FOCUS</span>
+        <span class="panel-row-value">${peakFocusMins}min block</span>
+        <div class="mini-bar-wrap"><div class="mini-bar-fill" style="width:${peakPct}%"></div></div>
+      </div>
+      <div class="panel-row">
+        <span class="panel-row-label">FLOW STATES</span>
+        <span class="panel-row-value">${flowStateCount} today</span>
+      </div>
+      <div class="panel-row">
+        <span class="panel-row-label">DEEP WORK</span>
+        <span class="panel-row-value">${deepWorkPct}% of day</span>
+        <div class="mini-bar-wrap"><div class="mini-bar-fill" style="width:${deepPct}%"></div></div>
+      </div>
+      <div class="panel-row">
+        <span class="panel-row-label">STREAK</span>
+        <span class="panel-row-value">${streakDays} days${streakDays >= 3 ? ' 🔥' : ''}</span>
+      </div>
+    `;
+  }
+
+  // ── Capacity panel ──────────────────────────────────────────────────────────
+  const capList = get('capacity-list');
+  if (capList && stats.capacity) {
+    const { cognitiveCapacity, lastBreakMins, screenTimeMins, followThrough } = stats.capacity;
+    const ftText = followThrough !== null ? `${followThrough}%` : '—';
+    const h = Math.floor(screenTimeMins / 60);
+    const m = screenTimeMins % 60;
+    const screenStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    capList.innerHTML = `
+      <div class="panel-row">
+        <span class="panel-row-label">COGNITIVE</span>
+        <div class="mini-bar-wrap"><div class="mini-bar-fill" style="width:${cognitiveCapacity}%"></div></div>
+        <span class="panel-row-value cyan">${cognitiveCapacity}%</span>
+      </div>
+      <div class="panel-row">
+        <span class="panel-row-label">LAST BREAK</span>
+        <span class="panel-row-value">${lastBreakMins}min ago</span>
+      </div>
+      <div class="panel-row">
+        <span class="panel-row-label">SCREEN TIME</span>
+        <span class="panel-row-value">${screenStr}</span>
+      </div>
+      <div class="panel-row">
+        <span class="panel-row-label">FOLLOW-THROUGH</span>
+        <span class="panel-row-value">${ftText}</span>
+      </div>
+    `;
+  }
+
+  // ── Open apps ───────────────────────────────────────────────────────────────
+  const actRow   = get('apps-active-row');
+  const inactRow = get('apps-inactive-row');
+  const apps     = stats.openApps ?? [];
 
   if (actRow) {
+    const active = apps.filter(a => a.isActive);
     actRow.innerHTML = active.length > 0
       ? active.map(a => `<span class="app-chip active">● ${escapeHtml(a.name)}</span>`).join('')
       : '';
   }
   if (inactRow) {
+    const inact = apps.filter(a => !a.isActive);
     inactRow.innerHTML = inact.length > 0
       ? inact.map(a => `<span class="app-chip inactive">○ ${escapeHtml(a.name)}</span>`).join('')
       : '';
   }
 
-  // Goals with bar + percentage
+  // ── Goals with actual progress bar + % ─────────────────────────────────────
+  const prList = get('priorities-list');
   if (prList) {
     prList.innerHTML = (stats.priorities ?? []).map((p, i) => {
-      const pct = p.impactScore * 10;
+      const pct = p.progress ?? 0;
       return `
         <div class="priority-item">
           <span class="priority-num">0${i + 1}</span>
-          <span class="priority-text">${escapeHtml(p.text.slice(0, 28))}${p.text.length > 28 ? '…' : ''}</span>
+          <span class="priority-text">${escapeHtml(p.text.slice(0, 30))}${p.text.length > 30 ? '…' : ''}</span>
           <div class="priority-bar-wrap">
             <div class="priority-bar-fill" style="width:${pct}%"></div>
           </div>
@@ -134,6 +202,8 @@ window.axon.onStatsUpdate((stats: AxonStats) => {
     }).join('');
   }
 
+  // ── Tasks ───────────────────────────────────────────────────────────────────
+  const cmList = get('commitments-list');
   if (cmList) {
     cmList.innerHTML = (stats.commitments ?? []).map(c => `
       <div class="commitment-item">
@@ -178,11 +248,11 @@ window.axon.onAgentsUpdate((agents: AgentStatus[]) => {
 const canvas   = document.getElementById('waveform-canvas') as HTMLCanvasElement;
 const ctx      = canvas.getContext('2d')!;
 const N_BARS   = 64;
-const CX       = 100;
-const CY       = 100;
-const R_INNER  = 55;   // where bars start
-const R_MAX    = 90;   // max bar tip radius
-const BAR_W    = 1.6;
+const CX       = 130;
+const CY       = 130;
+const R_INNER  = 72;   // where bars start
+const R_MAX    = 118;  // max bar tip radius
+const BAR_W    = 1.8;
 
 const barEnergy    = new Float32Array(N_BARS);
 const targetEnergy = new Float32Array(N_BARS);
@@ -225,14 +295,14 @@ function lerpEnergies(): void {
 }
 
 function drawFrame(): void {
-  ctx.clearRect(0, 0, 200, 200);
+  ctx.clearRect(0, 0, 260, 260);
 
   // ── Rotating arc rings ─────────────────────────────────────────────────────
   // Two rings with 4 segments each, gaps give the targeting sight look.
   const rotCW  =  frameCount * 0.005;
   const rotCCW = -frameCount * 0.007;
 
-  const ringConfig: [number, number][] = [[95, rotCW], [101, rotCCW]];
+  const ringConfig: [number, number][] = [[124, rotCW], [132, rotCCW]];
   for (const [r, rot] of ringConfig) {
     ctx.strokeStyle = 'rgba(0, 68, 85, 0.9)';
     ctx.lineWidth   = 1;

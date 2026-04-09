@@ -2,6 +2,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
+import fs from 'fs';
+import path from 'path';
 import { generateSoul } from './memoryService';
 import { addTask, getPendingTasks, markDone } from './taskStore';
 import { addGoal, getActiveGoals, updateGoal, type Goal } from './goalService';
@@ -22,6 +24,7 @@ import {
   appSpotifyPlay, appVscodeOpen, appVscodeCommand,
 } from './appControl';
 import { orchestrate } from './subAgentOrchestrator';
+import { updateWakeWord } from './voiceListener';
 
 // Pending draft waiting for verbal confirmation before send
 let pendingDraft: DraftResult | null = null;
@@ -100,6 +103,21 @@ export const TOOLS: Anthropic.Tool[] = [
     description: 'Read all active goals, ranked by impact. Use when Isaac asks about his goals, ' +
                  'priorities, or what he should be working on.',
     input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name:        'goal_update_progress',
+    description: 'Update a goal\'s actual completion progress (0–100%). ' +
+                 'Use when Isaac says he finished something, is halfway through, or gives a percentage. ' +
+                 'E.g. "I finished the landing page" → progress 100, "I\'m about halfway done" → 50.',
+    input_schema: {
+      type:       'object',
+      properties: {
+        goal_number: { type: 'number', description: '1-based position from goal_list' },
+        progress:    { type: 'number', description: 'Completion percentage 0–100' },
+        reason:      { type: 'string', description: 'Brief reason for the update, e.g. "Isaac said he finished the landing page"' },
+      },
+      required: ['goal_number', 'progress'],
+    },
   },
   {
     name:        'goal_update',
@@ -417,6 +435,20 @@ export const TOOLS: Anthropic.Tool[] = [
     },
   },
 
+  // ── System configuration ─────────────────────────────────────────────────────
+  {
+    name:        'set_wake_word',
+    description: 'Set a custom wake word for Axon. After calling this, Axon will respond to the new word immediately (no restart needed). ' +
+                 'Use when Isaac says "change your wake word to X" or "respond to X instead".',
+    input_schema: {
+      type:       'object',
+      properties: {
+        word: { type: 'string', description: 'The new wake word or phrase, e.g. "hey jarvis"' },
+      },
+      required: ['word'],
+    },
+  },
+
   // ── Sub-agent orchestration ───────────────────────────────────────────────────
   {
     name:        'spawn_agents',
@@ -504,6 +536,15 @@ export async function executeTool(
         return goals.map((g, i) =>
           `${i + 1}. [${g.impactScore}/10 · ${g.timeHorizon}] ${g.text}`
         ).join('\n');
+      }
+
+      case 'goal_update_progress': {
+        const goals    = getActiveGoals();
+        const idx      = Math.round(Number(input.goal_number)) - 1;
+        if (idx < 0 || idx >= goals.length) return `No goal at position ${input.goal_number}.`;
+        const progress = Math.max(0, Math.min(100, Math.round(Number(input.progress))));
+        updateGoal(goals[idx].id, { progress });
+        return `Goal progress updated to ${progress}%: "${goals[idx].text}"${input.reason ? ` (${input.reason})` : ''}`;
       }
 
       case 'goal_update': {
@@ -775,6 +816,27 @@ export async function executeTool(
         if (input.action === 'open_file') return await appVscodeOpen(input.file ?? '');
         if (input.action === 'command')   return await appVscodeCommand(input.command ?? '');
         return `Unknown app_vscode action: ${input.action}`;
+      }
+
+      case 'set_wake_word': {
+        const word = (input.word ?? '').trim();
+        if (!word) return 'No wake word provided.';
+        // Update in-memory immediately
+        updateWakeWord(word);
+        // Persist to .env file
+        const envPath = path.resolve(process.cwd(), '.env');
+        try {
+          let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+          if (envContent.includes('AXON_WAKE_WORD=')) {
+            envContent = envContent.replace(/^AXON_WAKE_WORD=.*$/m, `AXON_WAKE_WORD=${word}`);
+          } else {
+            envContent += `\nAXON_WAKE_WORD=${word}\n`;
+          }
+          fs.writeFileSync(envPath, envContent, 'utf8');
+        } catch (e) {
+          console.warn('[Tool] set_wake_word: could not write .env:', e);
+        }
+        return `Done — I'll respond to "${word}" from now on.`;
       }
 
       // ── Sub-agent orchestration ────────────────────────────────────────────────
