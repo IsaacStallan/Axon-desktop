@@ -541,6 +541,29 @@ async function fireWithLock(pattern: PatternResult, type: InterventionRecord['ty
   }
 }
 
+// ── Screen observer hooks ──────────────────────────────────────────────────────
+
+/**
+ * Called by screenObserver when a writing context is detected on screen change.
+ * Triggers an immediate content quality check rather than waiting for the 2-min tick.
+ */
+export function triggerContentQualityCheck(): void {
+  void checkContentQuality();
+}
+
+/**
+ * Called by screenObserver when a distraction context is detected on screen change.
+ * Moves the intervention gap back so the decision engine can fire within ~5 minutes
+ * instead of waiting out the full 25-minute gap.
+ */
+export function flagDistractionContext(): void {
+  const fiveMinAgo = Date.now() - INTERVENTION_GAP_MS + 5 * 60_000;
+  if (lastInterventionTime > fiveMinAgo) {
+    lastInterventionTime = fiveMinAgo;
+    console.log('[InterventionDecider] distraction flagged by screen observer — gap reduced to 5 min');
+  }
+}
+
 // ── Decision tree ──────────────────────────────────────────────────────────────
 
 export async function evaluate(pattern: PatternResult): Promise<void> {

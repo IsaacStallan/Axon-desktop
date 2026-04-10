@@ -1,5 +1,6 @@
 import { desktopCapturer, BrowserWindow } from 'electron';
 import Anthropic from '@anthropic-ai/sdk';
+import { EventEmitter } from 'events';
 
 console.log('[ScreenAwareness] module loaded');
 
@@ -13,6 +14,11 @@ export interface ScreenContext {
   timestamp:          number;
   notes:              string;
 }
+
+// ── Change event bus ───────────────────────────────────────────────────────────
+
+/** Emits `screen:changed` with a ScreenContext payload when changeScore > 40. */
+export const screenEvents = new EventEmitter();
 
 // ── Module state ───────────────────────────────────────────────────────────────
 
@@ -36,6 +42,36 @@ const FALLBACK: ScreenContext = {
 
 export function setOrbWindow(win: BrowserWindow): void {
   orbWin = win;
+}
+
+// ── Change scoring ─────────────────────────────────────────────────────────────
+
+/**
+ * Scores how much the screen context changed between two captures (0–100).
+ * App changed → 50 pts, activity description changed significantly → 30 pts,
+ * productivity signal changed → 20 pts.
+ */
+function computeChangeScore(prev: ScreenContext, next: ScreenContext): number {
+  let score = 0;
+
+  if (prev.activeApp.toLowerCase() !== next.activeApp.toLowerCase()) {
+    score += 50;
+  }
+
+  if (prev.activity.toLowerCase() !== next.activity.toLowerCase()) {
+    // Weight by word-overlap — minor rewording of the same idea scores 0
+    const prevWords = new Set(prev.activity.toLowerCase().split(/\s+/));
+    const nextWords = next.activity.toLowerCase().split(/\s+/);
+    const overlap   = nextWords.filter(w => prevWords.has(w)).length;
+    const total     = Math.max(prevWords.size, 1);
+    if (overlap / total < 0.5) score += 30;
+  }
+
+  if (prev.productivitySignal !== next.productivitySignal) {
+    score += 20;
+  }
+
+  return score;
 }
 
 // ── Screen capture ─────────────────────────────────────────────────────────────
@@ -129,6 +165,11 @@ export async function analyseScreen(): Promise<ScreenContext> {
       notes:              parsed.notes              ?? '',
     };
 
+    // Keep previous context before pushing so we can score the change
+    const prevCtx = recentContexts.length > 0
+      ? recentContexts[recentContexts.length - 1]
+      : null;
+
     recentContexts.push(ctx);
     if (recentContexts.length > MAX_CONTEXTS) recentContexts.shift();
 
@@ -136,6 +177,15 @@ export async function analyseScreen(): Promise<ScreenContext> {
       `[ScreenAwareness] captured screen — ` +
       `active: ${ctx.activeApp} — activity: ${ctx.activity}, signal: ${ctx.productivitySignal}`,
     );
+
+    // Passive observation — emit change event when context shifts meaningfully
+    if (prevCtx) {
+      const changeScore = computeChangeScore(prevCtx, ctx);
+      if (changeScore > 40) {
+        console.log(`[ScreenAwareness] change score ${changeScore} — emitting screen:changed`);
+        screenEvents.emit('screen:changed', ctx);
+      }
+    }
 
     return ctx;
   } catch (e) {
