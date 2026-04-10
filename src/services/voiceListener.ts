@@ -78,11 +78,13 @@ function extractCommandAfterWakeWord(transcript: string): string {
 // ── Sleep-word detection ──────────────────────────────────────────────────────
 
 const SLEEP_WORDS = [
-  'goodnight', 'good night', 'bye', 'cancel', 'go to sleep',
-  'stop listening', 'go idle', 'see ya', 'goodbye', "that's all",
+  'stop', 'sleep', 'bye', 'goodbye', 'cancel',
+  'never mind', 'go to sleep', 'stop listening',
 ];
 
 export function isSleepWord(transcript: string): boolean {
+  const wordCount = transcript.trim().split(/\s+/).filter(Boolean).length;
+  if (wordCount >= 10) return false;
   const t = transcript.toLowerCase().replace(/[^\w\s]/g, ' ');
   return SLEEP_WORDS.some(s => t.includes(s));
 }
@@ -288,7 +290,11 @@ function runMacSession(onWakeWord: () => void, gen: number): Promise<void> {
           console.log('[VoiceListener] heard:', transcript);
         }
 
-        if (!stopFlag && gen === sessionGen && isWakeWord(transcript)) {
+        if (!stopFlag && gen === sessionGen && isSleepWord(transcript)) {
+          console.log(`[VoiceListener] sleep word detected: "${transcript}" — returning to idle`);
+          stopFlag = true;
+          settle(() => resolve());
+        } else if (!stopFlag && gen === sessionGen && isWakeWord(transcript)) {
           console.log('[VoiceListener] WAKE WORD DETECTED:', transcript);
 
           const command = extractCommandAfterWakeWord(transcript);
@@ -333,6 +339,12 @@ async function runWindowsSession(onWakeWord: () => void): Promise<void> {
     if (!transcript) continue;
 
     console.log('[VoiceListener] heard:', transcript);
+
+    if (isSleepWord(transcript)) {
+      console.log(`[VoiceListener] sleep word detected: "${transcript}" — returning to idle`);
+      stopFlag = true;
+      return;
+    }
 
     if (isWakeWord(transcript)) {
       console.log('[VoiceListener] WAKE WORD DETECTED:', transcript);

@@ -39,6 +39,104 @@ function buildWavHeader(dataByteLength: number): Buffer {
   return h;
 }
 
+// ── Sentence-boundary splitting ───────────────────────────────────────────────
+
+/** Split text into chunks no larger than maxChars, breaking at sentence ends. */
+function splitOnSentences(text: string, maxChars: number): string[] {
+  if (text.length <= maxChars) return [text];
+
+  const sentences = text.match(/[^.!?]*[.!?]+\s*/g) ?? [text];
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const sentence of sentences) {
+    if (current.length > 0 && (current + sentence).length > maxChars) {
+      chunks.push(current.trimEnd());
+      current = sentence;
+    } else {
+      current += sentence;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+
+  return chunks.length > 0 ? chunks : [text];
+}
+
+// ── Single-chunk TTS call + playback ─────────────────────────────────────────
+
+async function speakChunk(text: string): Promise<void> {
+  const response = await axios.post(
+    `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=pcm_22050`,
+    {
+      text,
+      model_id: 'eleven_flash_v2_5',
+      voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.5 },
+    },
+    {
+      headers: {
+        'xi-api-key':   API_KEY,
+        'Content-Type': 'application/json',
+        Accept:         'audio/pcm',
+      },
+      responseType: 'arraybuffer',
+    },
+  );
+
+  if (response.status !== 200) {
+    console.warn('[ElevenLabs] API error status:', response.status);
+    return;
+  }
+
+  const pcmData = Buffer.from(response.data as ArrayBuffer);
+  console.log('[ElevenLabs] received', pcmData.byteLength, 'bytes');
+
+  if (pcmData.byteLength < 200) {
+    console.warn('[ElevenLabs] suspiciously small response:', pcmData.toString('utf8', 0, Math.min(300, pcmData.byteLength)));
+    return;
+  }
+
+  const wav = Buffer.concat([buildWavHeader(pcmData.byteLength), pcmData]);
+  writeFileSync(TMP_FILE, wav);
+
+  await new Promise<void>((resolve) => {
+    const [playerPath, playerArgs]: [string, string[]] =
+      process.platform === 'darwin'
+        ? ['afplay', [TMP_FILE]]
+        : [SOX_PATH, ['-t', 'wav', TMP_FILE, '-t', SOX_AUDIO_OUT, 'default']];
+
+    const player = spawn(playerPath, playerArgs, { shell: false });
+
+    const timer = setTimeout(() => {
+      console.warn('[ElevenLabs] playback hard cap — killing player');
+      player.kill();
+      resolve();
+    }, 60_000);
+
+    player.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0 && code !== null) console.warn('[ElevenLabs] player exited with code:', code);
+      resolve();
+    });
+
+    player.on('error', (err) => {
+      clearTimeout(timer);
+      console.warn('[ElevenLabs] player error:', err.message);
+      resolve();
+    });
+
+    const stderrBuf: Buffer[] = [];
+    player.stderr?.on('data', (b: Buffer) => stderrBuf.push(b));
+    player.on('close', () => {
+      const msg = Buffer.concat(stderrBuf).toString().trim();
+      if (msg) console.warn('[ElevenLabs] player stderr:', msg);
+    });
+  });
+
+  try { unlinkSync(TMP_FILE); } catch { /* ignore cleanup errors */ }
+}
+
+// ── Public speak() — splits long text, speaks all chunks sequentially ─────────
+
 export async function speak(text: string): Promise<void> {
   console.log('[ElevenLabs] speak:', text.slice(0, 60));
 
@@ -47,84 +145,20 @@ export async function speak(text: string): Promise<void> {
     return;
   }
 
+  // Buffer the full response before playing — streaming PCM to SoX stdin
+  // causes premature EOF on macOS after the first chunk.
+  const chunks = splitOnSentences(text, 2000);
+  if (chunks.length > 1) {
+    console.log(`[ElevenLabs] text split into ${chunks.length} chunks for sequential delivery`);
+  }
+
   isSpeaking = true;
   orbWin?.webContents.send('orb:state', 'speaking');
 
   try {
-    // Buffer the full response before playing — streaming PCM to SoX stdin
-    // causes premature EOF on macOS after the first chunk.
-    const response = await axios.post(
-      `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=pcm_22050`,
-      {
-        text,
-        model_id: 'eleven_flash_v2_5',
-        voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.5 },
-      },
-      {
-        headers: {
-          'xi-api-key':   API_KEY,
-          'Content-Type': 'application/json',
-          Accept:         'audio/pcm',
-        },
-        responseType: 'arraybuffer',
-      },
-    );
-
-    if (response.status !== 200) {
-      console.warn('[ElevenLabs] API error status:', response.status);
-      return;
+    for (const chunk of chunks) {
+      await speakChunk(chunk);
     }
-
-    const pcmData = Buffer.from(response.data as ArrayBuffer);
-    console.log('[ElevenLabs] received', pcmData.byteLength, 'bytes');
-
-    // Small response → likely an API error JSON, not audio
-    if (pcmData.byteLength < 200) {
-      console.warn('[ElevenLabs] suspiciously small response:', pcmData.toString('utf8', 0, Math.min(300, pcmData.byteLength)));
-      return;
-    }
-
-    // Wrap raw PCM in a WAV container so any player can handle it
-    const wav = Buffer.concat([buildWavHeader(pcmData.byteLength), pcmData]);
-    writeFileSync(TMP_FILE, wav);
-
-    await new Promise<void>((resolve) => {
-      // macOS: afplay is built-in and reliably handles WAV files.
-      // Windows: fall back to SoX.
-      const [playerPath, playerArgs]: [string, string[]] =
-        process.platform === 'darwin'
-          ? ['afplay', [TMP_FILE]]
-          : [SOX_PATH, ['-t', 'wav', TMP_FILE, '-t', SOX_AUDIO_OUT, 'default']];
-
-      const player = spawn(playerPath, playerArgs, { shell: false });
-
-      const timer = setTimeout(() => {
-        console.warn('[ElevenLabs] playback hard cap — killing player');
-        player.kill();
-        resolve();
-      }, 60_000);
-
-      player.on('close', (code) => {
-        clearTimeout(timer);
-        if (code !== 0 && code !== null) console.warn('[ElevenLabs] player exited with code:', code);
-        resolve();
-      });
-
-      player.on('error', (err) => {
-        clearTimeout(timer);
-        console.warn('[ElevenLabs] player error:', err.message);
-        resolve();
-      });
-
-      const stderrBuf: Buffer[] = [];
-      player.stderr?.on('data', (b: Buffer) => stderrBuf.push(b));
-      player.on('close', () => {
-        const msg = Buffer.concat(stderrBuf).toString().trim();
-        if (msg) console.warn('[ElevenLabs] player stderr:', msg);
-      });
-    });
-
-    try { unlinkSync(TMP_FILE); } catch { /* ignore cleanup errors */ }
   } catch (e) {
     console.warn('[ElevenLabs] TTS failed:', e);
   } finally {
