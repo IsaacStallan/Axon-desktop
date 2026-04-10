@@ -245,7 +245,7 @@ async function executeAgent(task: SubTask, priorResults: AgentResult[]): Promise
 // ── Parallel + sequential execution ───────────────────────────────────────────
 
 async function executeParallel(tasks: SubTask[], priorResults: AgentResult[]): Promise<AgentResult[]> {
-  const MAX_PARALLEL = 5;
+  const MAX_PARALLEL = 3;
   const results: AgentResult[] = [];
 
   for (let i = 0; i < tasks.length; i += MAX_PARALLEL) {
@@ -255,6 +255,18 @@ async function executeParallel(tasks: SubTask[], priorResults: AgentResult[]): P
   }
 
   return results;
+}
+
+async function executeSequentialWithDelay(tasks: SubTask[], priorResults: AgentResult[]): Promise<AgentResult[]> {
+  const results: AgentResult[] = [...priorResults];
+  for (let i = 0; i < tasks.length; i++) {
+    const result = await executeAgent(tasks[i], results);
+    results.push(result);
+    if (i < tasks.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
+  return results.slice(priorResults.length);
 }
 
 async function executeSequential(tasks: SubTask[], priorResults: AgentResult[]): Promise<AgentResult[]> {
@@ -351,22 +363,30 @@ export async function orchestrate(instruction: string): Promise<string> {
 
   console.log(`[SubAgent] plan: ${tasks.length} tasks`, tasks.map(t => `${t.id}:${t.type}`).join(', '));
 
-  // Split into independent tasks and those with dependencies
-  const independent = tasks.filter(t => !t.dependsOn || t.dependsOn.length === 0);
-  const dependent   = tasks.filter(t =>  t.dependsOn && t.dependsOn.length > 0);
+  const estimatedCalls = tasks.length * 2;
+  const runSequential  = estimatedCalls > 8;
+  console.log(`[Agents] estimated ${estimatedCalls} calls — running ${runSequential ? 'sequential' : 'parallel'}`);
 
-  let allResults: AgentResult[] = [];
+  let allResults: AgentResult[];
 
-  // Run independent tasks in parallel first
-  if (independent.length > 0) {
-    const results = await executeParallel(independent, []);
-    allResults = [...results];
-  }
+  if (runSequential) {
+    allResults = await executeSequentialWithDelay(tasks, []);
+  } else {
+    // Split into independent tasks and those with dependencies
+    const independent = tasks.filter(t => !t.dependsOn || t.dependsOn.length === 0);
+    const dependent   = tasks.filter(t =>  t.dependsOn && t.dependsOn.length > 0);
 
-  // Run dependent tasks sequentially after their deps are done
-  if (dependent.length > 0) {
-    const results = await executeSequential(dependent, allResults);
-    allResults = [...allResults, ...results];
+    allResults = [];
+
+    if (independent.length > 0) {
+      const results = await executeParallel(independent, []);
+      allResults = [...results];
+    }
+
+    if (dependent.length > 0) {
+      const results = await executeSequential(dependent, allResults);
+      allResults = [...allResults, ...results];
+    }
   }
 
   return synthesiseResults(instruction, allResults);

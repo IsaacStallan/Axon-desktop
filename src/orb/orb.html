@@ -40,6 +40,21 @@
       position: relative;
     }
 
+    /* ── Scrollable body (everything below the waveform) ─────────────────────── */
+    #scroll-body {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    #scroll-body::-webkit-scrollbar { width: 3px; }
+    #scroll-body::-webkit-scrollbar-track { background: transparent; }
+    #scroll-body::-webkit-scrollbar-thumb {
+      background: var(--cyan);
+      border-radius: 2px;
+      opacity: 0.4;
+    }
+
     /* Scanline overlay */
     #panel::after {
       content: '';
@@ -214,7 +229,7 @@
       letter-spacing: 1px;
     }
 
-    /* ── Two-column stats grid (PERFORMANCE + CAPACITY side by side) ─────────── */
+    /* ── Two-column stats grid (CAPABILITIES + CAPACITY side by side) ───────── */
     #stats-grid {
       width: 100%;
       display: grid;
@@ -245,6 +260,37 @@
         border-top: 1px solid var(--border);
       }
     }
+
+    /* ── Capabilities list ────────────────────────────────────────────────────── */
+    #capabilities-list {
+      padding: 0 12px 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 6px;
+    }
+
+    .capability-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .capability-dot {
+      font-size: 8px;
+      color: var(--cyan);
+      flex-shrink: 0;
+      line-height: 1;
+    }
+
+    .capability-label {
+      font-size: 9px;
+      letter-spacing: 0.8px;
+      color: var(--text-hi);
+      white-space: nowrap;
+    }
+
+    .capability-item.capability-dim .capability-dot  { color: var(--dim); }
+    .capability-item.capability-dim .capability-label { color: var(--dim); }
 
     /* ── Shared section styles ────────────────────────────────────────────────── */
     .section {
@@ -414,38 +460,6 @@
       animation: spin 1s linear infinite;
     }
 
-    /* ── Tasks ────────────────────────────────────────────────────────────────── */
-    #tasks-section {
-      flex: 1;
-      overflow-y: auto;
-      min-height: 0;
-    }
-
-    #tasks-section::-webkit-scrollbar { width: 3px; }
-    #tasks-section::-webkit-scrollbar-track { background: transparent; }
-    #tasks-section::-webkit-scrollbar-thumb { background: var(--border); }
-
-    .commitment-item {
-      display: flex;
-      align-items: flex-start;
-      padding: 5px 16px;
-      gap: 8px;
-    }
-
-    .commitment-arrow {
-      color: var(--cyan);
-      font-size: 10px;
-      opacity: 0.6;
-      flex-shrink: 0;
-      margin-top: 1px;
-    }
-
-    .commitment-text {
-      font-size: 10px;
-      color: var(--text);
-      letter-spacing: 0.3px;
-      line-height: 1.45;
-    }
 
     /* ── Status dot colours ───────────────────────────────────────────────────── */
     body.listening  #status-dot { background: var(--cyan); }
@@ -526,59 +540,58 @@
       <canvas id="waveform-canvas"></canvas>
     </div>
 
-    <!-- Axon status bar -->
-    <div id="axon-status-bar">
-      <span id="axon-activity">Monitoring your activity</span>
-    </div>
+    <!-- Scrollable body — everything below the waveform scrolls -->
+    <div id="scroll-body">
 
-    <!-- Focus / Drift stats -->
-    <div id="stats-row">
-      <div class="stat-block">
-        <div class="stat-label">FOCUS</div>
-        <div class="stat-value" id="focus-time">0m</div>
+      <!-- Axon status bar -->
+      <div id="axon-status-bar">
+        <span id="axon-activity">Monitoring your activity</span>
       </div>
-      <div class="stat-block">
-        <div class="stat-label">DRIFT</div>
-        <div class="stat-value" id="drift-time">0m</div>
+
+      <!-- Focus / Drift stats -->
+      <div id="stats-row">
+        <div class="stat-block">
+          <div class="stat-label">FOCUS</div>
+          <div class="stat-value" id="focus-time">0m</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">DRIFT</div>
+          <div class="stat-value" id="drift-time">0m</div>
+        </div>
       </div>
-    </div>
 
-    <!-- Performance + Capacity: two-column grid -->
-    <div id="stats-grid">
-      <div class="grid-section" id="performance-section">
-        <div class="section-label">PERFORMANCE</div>
-        <div class="panel-list" id="performance-list"></div>
+      <!-- Capabilities + Capacity: two-column grid -->
+      <div id="stats-grid">
+        <div class="grid-section" id="capabilities-section">
+          <div class="section-label">CAPABILITIES</div>
+          <div id="capabilities-list"></div>
+        </div>
+        <div class="grid-section" id="capacity-section">
+          <div class="section-label">CAPACITY</div>
+          <div class="panel-list" id="capacity-list"></div>
+        </div>
       </div>
-      <div class="grid-section" id="capacity-section">
-        <div class="section-label">CAPACITY</div>
-        <div class="panel-list" id="capacity-list"></div>
+
+      <!-- Open apps -->
+      <div class="section" id="open-apps-section" style="padding-bottom:10px">
+        <div class="section-label">OPEN APPS</div>
+        <div class="apps-row" id="apps-active-row"></div>
+        <div class="apps-row" id="apps-inactive-row"></div>
       </div>
-    </div>
 
-    <!-- Open apps -->
-    <div class="section" id="open-apps-section" style="padding-bottom:10px">
-      <div class="section-label">OPEN APPS</div>
-      <div class="apps-row" id="apps-active-row"></div>
-      <div class="apps-row" id="apps-inactive-row"></div>
-    </div>
+      <!-- Goals -->
+      <div class="section" id="priorities-section">
+        <div class="section-label">GOALS</div>
+        <div id="priorities-list"></div>
+      </div>
 
-    <!-- Goals -->
-    <div class="section" id="priorities-section">
-      <div class="section-label">GOALS</div>
-      <div id="priorities-list"></div>
-    </div>
+      <!-- Agents -->
+      <div class="section" id="agents-section">
+        <div class="section-label">AGENTS</div>
+        <div id="agents-list"><div class="no-agents">no agents active</div></div>
+      </div>
 
-    <!-- Agents -->
-    <div class="section" id="agents-section">
-      <div class="section-label">AGENTS</div>
-      <div id="agents-list"><div class="no-agents">no agents active</div></div>
-    </div>
-
-    <!-- Tasks -->
-    <div id="tasks-section">
-      <div class="section-label">TASKS</div>
-      <div id="commitments-list"></div>
-    </div>
+    </div><!-- /scroll-body -->
 
   </div>
 

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 import Anthropic from '@anthropic-ai/sdk';
+import * as cloudSync from './cloudSync';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -233,8 +234,48 @@ ${convoText || 'No conversations recorded yet.'}`,
 }
 
 /**
+ * Uses Claude Haiku to consolidate a large facts array down to ~150 entries
+ * by merging related facts together. All unique information is preserved.
+ */
+async function consolidateFacts(facts: string[]): Promise<string[]> {
+  const resp = await client.messages.create({
+    model:      'claude-haiku-4-5-20251001',
+    max_tokens: 1500,
+    messages:   [{
+      role:    'user',
+      content: `You are consolidating a memory store for an AI assistant. The list below has ${facts.length} facts about a user.
+Merge related facts together so the total count is reduced to around 150 facts.
+For example, 10 facts about the same project become 1 comprehensive fact.
+Preserve all unique information — just combine facts that are about the same topic or entity.
+
+Return ONLY a raw JSON array of strings (no markdown, no explanation). Each string is one consolidated fact.
+
+Facts to consolidate:
+${facts.map((f, i) => `${i + 1}. ${f}`).join('\n')}`,
+    }],
+  });
+
+  const block = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+  if (!block) return facts;
+
+  const raw   = block.text.trim().replace(/^```json?\s*/i, '').replace(/```$/, '').trim();
+  const match = raw.match(/\[[\s\S]*\]/);
+  if (!match) return facts;
+
+  try {
+    const consolidated = JSON.parse(match[0]) as unknown[];
+    const strings = consolidated.filter((f): f is string => typeof f === 'string');
+    if (strings.length === 0) return facts;
+    return strings;
+  } catch {
+    return facts;
+  }
+}
+
+/**
  * Sends `exchanges` to Claude, extracts notable facts, and merges them into
- * facts.json.  Old facts are dropped when the list exceeds MAX_FACTS.
+ * facts.json.  When facts reach MAX_FACTS, runs a consolidation pass instead
+ * of dropping old facts — never stops saving.
  * Fire-and-forget — caller should not await this on the hot path.
  */
 export async function extractAndSaveFacts(exchanges: Exchange[]): Promise<void> {
@@ -286,10 +327,21 @@ ${convoText}`,
 
     const strings  = (newFacts as unknown[]).filter((f): f is string => typeof f === 'string');
     const existing = getLearnedFacts();
-    const merged   = [...existing, ...strings].slice(-MAX_FACTS); // oldest dropped
+    let merged     = [...existing, ...strings];
+
+    if (merged.length >= MAX_FACTS) {
+      const before = merged.length;
+      merged = await consolidateFacts(merged);
+      console.log(`[Memory] consolidating — was ${before} facts, now ${merged.length}`);
+    }
 
     fs.writeFileSync(factsPath(), JSON.stringify(merged, null, 2), 'utf8');
     console.log(`[Memory] +${strings.length} facts saved (total: ${merged.length})`);
+
+    // Push new facts to Supabase (fire-and-forget)
+    for (const fact of strings) {
+      cloudSync.pushFact(fact);
+    }
   } catch (e) {
     console.warn('[Memory] extractAndSaveFacts error:', e);
   }

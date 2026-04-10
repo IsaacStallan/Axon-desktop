@@ -29,7 +29,7 @@ interface AxonStats {
   priorities: Array<{ text: string; impactScore: number; progress: number }>;
   commitments: string[];
   openApps:   Array<{ name: string; lastUsed: number; isActive: boolean }>;
-  performance: {
+  performance?: {
     peakFocusMins:  number;
     flowStateCount: number;
     deepWorkPct:    number;
@@ -40,6 +40,10 @@ interface AxonStats {
     lastBreakMins:     number;
     screenTimeMins:    number;
     followThrough:     number | null;
+  };
+  capabilities?: {
+    gmailConnected:   boolean;
+    pcMonitorActive:  boolean;
   };
 }
 
@@ -109,32 +113,31 @@ window.axon.onStatsUpdate((stats: AxonStats) => {
   if (focusEl) focusEl.textContent = `${stats.focusMin}m`;
   if (driftEl) driftEl.textContent = `${stats.driftMin}m`;
 
-  // ── Performance panel ───────────────────────────────────────────────────────
-  const perfList = get('performance-list');
-  if (perfList && stats.performance) {
-    const { peakFocusMins, flowStateCount, deepWorkPct, streakDays } = stats.performance;
-    const peakPct = Math.min(100, Math.round((peakFocusMins / 120) * 100));
-    const deepPct = deepWorkPct;
-    perfList.innerHTML = `
-      <div class="panel-row">
-        <span class="panel-row-label">PEAK FOCUS</span>
-        <span class="panel-row-value">${peakFocusMins}min block</span>
-        <div class="mini-bar-wrap"><div class="mini-bar-fill" style="width:${peakPct}%"></div></div>
+  // ── Capabilities panel ──────────────────────────────────────────────────────
+  const capabilitiesList = get('capabilities-list');
+  if (capabilitiesList) {
+    const gmailOk = stats.capabilities?.gmailConnected    ?? false;
+    const pcOk    = stats.capabilities?.pcMonitorActive   ?? false;
+
+    const items: Array<{ label: string; active: boolean }> = [
+      { label: 'Voice',          active: true    },
+      { label: 'Browser',        active: true    },
+      { label: 'Spotify',        active: true    },
+      { label: 'Calendar',       active: true    },
+      { label: 'Gmail',          active: gmailOk },
+      { label: 'App Control',    active: true    },
+      { label: 'Screen Aware',   active: true    },
+      { label: 'Sub-Agents',     active: true    },
+      { label: 'PC Monitor',     active: pcOk    },
+      { label: 'Memory',         active: true    },
+    ];
+
+    capabilitiesList.innerHTML = items.map(item => `
+      <div class="capability-item${item.active ? '' : ' capability-dim'}">
+        <span class="capability-dot">${item.active ? '●' : '○'}</span>
+        <span class="capability-label">${escapeHtml(item.label)}</span>
       </div>
-      <div class="panel-row">
-        <span class="panel-row-label">FLOW STATES</span>
-        <span class="panel-row-value">${flowStateCount} today</span>
-      </div>
-      <div class="panel-row">
-        <span class="panel-row-label">DEEP WORK</span>
-        <span class="panel-row-value">${deepWorkPct}% of day</span>
-        <div class="mini-bar-wrap"><div class="mini-bar-fill" style="width:${deepPct}%"></div></div>
-      </div>
-      <div class="panel-row">
-        <span class="panel-row-label">STREAK</span>
-        <span class="panel-row-value">${streakDays} days${streakDays >= 3 ? ' 🔥' : ''}</span>
-      </div>
-    `;
+    `).join('');
   }
 
   // ── Capacity panel ──────────────────────────────────────────────────────────
@@ -202,16 +205,6 @@ window.axon.onStatsUpdate((stats: AxonStats) => {
     }).join('');
   }
 
-  // ── Tasks ───────────────────────────────────────────────────────────────────
-  const cmList = get('commitments-list');
-  if (cmList) {
-    cmList.innerHTML = (stats.commitments ?? []).map(c => `
-      <div class="commitment-item">
-        <span class="commitment-arrow">→</span>
-        <span class="commitment-text">${escapeHtml(c)}</span>
-      </div>
-    `).join('');
-  }
 });
 
 // ── Activity updates ──────────────────────────────────────────────────────────

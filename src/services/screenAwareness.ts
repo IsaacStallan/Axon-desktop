@@ -49,8 +49,10 @@ export async function captureScreen(): Promise<string> {
 
   if (!sources.length) throw new Error('No screen sources available — check screen recording permission');
 
-  const png = sources[0].thumbnail.toPNG();
-  return png.toString('base64');
+  const png    = sources[0].thumbnail.toPNG();
+  const base64 = png.toString('base64');
+  if (!base64 || base64.length < 100) throw new Error('empty screenshot — skipping');
+  return base64;
 }
 
 // ── Vision analysis ────────────────────────────────────────────────────────────
@@ -61,6 +63,12 @@ export async function analyseScreen(): Promise<ScreenContext> {
   try {
     base64Screenshot = await captureScreen();
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === 'empty screenshot — skipping') {
+      const cached = recentContexts[recentContexts.length - 1];
+      console.log('[ScreenAwareness] empty capture — using cached context');
+      return cached ? { ...cached, timestamp: Date.now() } : { ...FALLBACK, timestamp: Date.now() };
+    }
     console.warn('[ScreenAwareness] capture failed (screen recording permission?):', e);
     return { ...FALLBACK, timestamp: Date.now() };
   }

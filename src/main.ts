@@ -37,6 +37,8 @@ console.error('[Main] loading briefingService');
 const { startBriefingService } = require('./services/briefingService');
 const { setOrbWindow: setSubAgentOrbWindow } = require('./services/subAgentOrchestrator');
 const { getPerformanceStats, getCognitiveStats } = require('./services/behaviourModel');
+const { isGmailConnected } = require('./services/gmailService');
+const { getAllDeviceStatuses } = require('./services/deviceCoordinator');
 console.error('[Main] all imports done');
 
 // ── Global error handlers ─────────────────────────────────────────────────────
@@ -228,6 +230,13 @@ async function sendStats(): Promise<void> {
   const performance = getPerformanceStats();
   const capacity    = getCognitiveStats(screenTimeMins);
 
+  // Capabilities status
+  const gmailConnected = isGmailConnected() as boolean;
+  const allDevices     = await getAllDeviceStatuses().catch(() => []) as Array<{ platform: string; lastSeen: Date }>;
+  const pcMonitorActive = allDevices.some(
+    (d) => d.platform === 'windows' && (Date.now() - new Date(d.lastSeen).getTime()) < 5 * 60_000,
+  );
+
   orbWindow.webContents.send('axon:stats', {
     focusMin,
     driftMin,
@@ -236,6 +245,7 @@ async function sendStats(): Promise<void> {
     openApps,
     performance,
     capacity,
+    capabilities: { gmailConnected, pcMonitorActive },
   });
 }
 

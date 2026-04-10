@@ -19,6 +19,7 @@ import { getOpenCommitmentsText, extractCommitmentsFromSession, detectCompletion
 import { isSleepWord } from './voiceListener';
 import { formatProactiveContext } from './proactiveContext';
 import { getCurrentScreenSummary } from './screenAwareness';
+import { AXON_CAPABILITIES }       from './axonCapabilities';
 
 
 
@@ -308,7 +309,9 @@ Dynamic:
 - Comfortable with back-and-forth dialogue and banter
 - Maintain respect, but not distance
 
-Your goal: Help Isaac think better, decide better, and execute effectively — while maintaining a natural, fluid conversational dynamic. You know him. Act like it.`;
+Your goal: Help Isaac think better, decide better, and execute effectively — while maintaining a natural, fluid conversational dynamic. You know him. Act like it.
+
+${AXON_CAPABILITIES}`;
 }
 
 // ── Retry wrapper for 529 overloaded errors ───────────────────────────────────
