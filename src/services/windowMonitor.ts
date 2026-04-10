@@ -27,12 +27,13 @@ function classifyApp(appName: string): AppLabel {
   return 'neutral';
 }
 
-// ── PowerShell query ──────────────────────────────────────────────────────────
-// Returns "processName|windowTitle" so we can classify on both.
-// Sorting by CPU puts the actively-used foreground process first even when
-// multiple processes have non-empty window titles.
+// ── Active window query ───────────────────────────────────────────────────────
+// macOS: osascript returns the frontmost app name.
+// Windows: PowerShell returns "processName|windowTitle" sorted by CPU usage.
 
-const PS_CMD =
+const MAC_CMD = `osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true'`;
+
+const WIN_CMD =
   'powershell -NoProfile -NonInteractive -Command "' +
   '$p = Get-Process | Where-Object {$_.MainWindowTitle -ne \'\'} | ' +
   'Sort-Object CPU -Descending | Select-Object -First 1; ' +
@@ -41,7 +42,14 @@ const PS_CMD =
 
 async function getActiveWindow(): Promise<{ processName: string; title: string } | null> {
   try {
-    const { stdout } = await execAsync(PS_CMD, { timeout: 5000 });
+    if (process.platform === 'darwin') {
+      const { stdout } = await execAsync(MAC_CMD, { timeout: 5000 });
+      const appName = stdout.trim();
+      if (!appName) return null;
+      return { processName: appName, title: appName };
+    }
+
+    const { stdout } = await execAsync(WIN_CMD, { timeout: 5000 });
     const line = stdout.trim();
     if (!line) return null;
 
@@ -53,7 +61,6 @@ async function getActiveWindow(): Promise<{ processName: string; title: string }
       title:       line.slice(pipeIdx + 1).trim(),
     };
   } catch {
-    // PowerShell unavailable or timed out — fail silently
     return null;
   }
 }
@@ -84,9 +91,39 @@ interface AppEntry {
 const sessionLog: AppEntry[] = [];
 const TWO_HOURS = 2 * 60 * 60 * 1000;
 
-let currentApp:   string   = 'unknown';
-let currentLabel: AppLabel = 'neutral';
-let currentStart: number   = Date.now();
+let currentApp:    string   = 'unknown';
+let currentLabel:  AppLabel = 'neutral';
+let currentAppStart: number = Date.now();
+
+// ── Accumulated active time tracking ─────────────────────────────────────────
+// sessionActiveTimes accumulates total active milliseconds per app across all
+// visits within the current day. Reset at midnight or on process restart.
+
+const sessionActiveTimes = new Map<string, number>();
+let   lastResetDate      = new Date().toISOString().slice(0, 10);
+
+function checkMidnightReset(): void {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== lastResetDate) {
+    sessionActiveTimes.clear();
+    lastResetDate = today;
+    console.log('[WindowMonitor] midnight reset — session active times cleared');
+  }
+}
+
+/** Total accumulated active time for any named app today, in milliseconds. */
+export function getTimeOnApp(appName: string): number {
+  const accumulated = sessionActiveTimes.get(appName) ?? 0;
+  if (appName === currentApp) {
+    return accumulated + (Date.now() - currentAppStart);
+  }
+  return accumulated;
+}
+
+/** Total accumulated active time for the currently focused app, in milliseconds. */
+export function getTimeOnCurrentApp(): number {
+  return getTimeOnApp(currentApp);
+}
 
 // ── Poll ──────────────────────────────────────────────────────────────────────
 
@@ -96,6 +133,8 @@ export function startWindowMonitor(): void {
 }
 
 async function poll(): Promise<void> {
+  checkMidnightReset();
+
   const win = await getActiveWindow();
   if (!win) return;
 
@@ -107,12 +146,20 @@ async function poll(): Promise<void> {
   if (appName !== currentApp) {
     // Commit the previous entry before switching
     if (currentApp !== 'unknown') {
+      const elapsed = Date.now() - currentAppStart;
+
       sessionLog.push({
         name:       currentApp,
         label:      currentLabel,
-        startedAt:  currentStart,
-        durationMs: Date.now() - currentStart,
+        startedAt:  currentAppStart,
+        durationMs: elapsed,
       });
+
+      // Accumulate into the per-app active time map
+      sessionActiveTimes.set(
+        currentApp,
+        (sessionActiveTimes.get(currentApp) ?? 0) + elapsed,
+      );
     }
 
     // Trim entries older than 2 hours
@@ -121,9 +168,9 @@ async function poll(): Promise<void> {
       sessionLog.shift();
     }
 
-    currentApp   = appName;
-    currentLabel = label;
-    currentStart = Date.now();
+    currentApp      = appName;
+    currentLabel    = label;
+    currentAppStart = Date.now();
 
     console.log(`[WindowMonitor] ${appName} (${label})`);
   }
@@ -131,11 +178,12 @@ async function poll(): Promise<void> {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export function getCurrentApp(): { name: string; label: AppLabel; durationMins: number } {
+export function getCurrentApp(): { name: string; label: AppLabel; durationMins: number; startedAt: number } {
   return {
     name:         currentApp,
     label:        currentLabel,
-    durationMins: (Date.now() - currentStart) / 60_000,
+    durationMins: getTimeOnCurrentApp() / 60_000,  // total accumulated, not just current session
+    startedAt:    currentAppStart,
   };
 }
 
@@ -145,7 +193,7 @@ export function getActivitySummary(): string {
     totals.set(entry.name, (totals.get(entry.name) ?? 0) + entry.durationMs);
   }
   // Include the still-running current app
-  totals.set(currentApp, (totals.get(currentApp) ?? 0) + (Date.now() - currentStart));
+  totals.set(currentApp, (totals.get(currentApp) ?? 0) + (Date.now() - currentAppStart));
 
   const sorted = [...totals.entries()]
     .sort((a, b) => b[1] - a[1])
@@ -163,8 +211,8 @@ export function getProductivityScore(): number {
     total    += entry.durationMs;
     if (entry.label === 'positive') positive += entry.durationMs;
   }
-  total += Date.now() - currentStart;
-  if (currentLabel === 'positive') positive += Date.now() - currentStart;
+  total += Date.now() - currentAppStart;
+  if (currentLabel === 'positive') positive += Date.now() - currentAppStart;
 
   return total === 0 ? 100 : Math.round((positive / total) * 100);
 }

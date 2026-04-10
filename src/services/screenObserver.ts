@@ -3,6 +3,7 @@ import { BrowserWindow } from 'electron';
 import { screenEvents }               from './screenAwareness';
 import type { ScreenContext }          from './screenAwareness';
 import { triggerContentQualityCheck, flagDistractionContext } from './interventionDecider';
+import { getTimeOnCurrentApp } from './windowMonitor';
 import { speak, isSpeaking }          from './elevenLabsService';
 import { isConversationActive }        from './conversationService';
 import { setLastProactiveMessage }    from './proactiveContext';
@@ -50,19 +51,78 @@ function isWritingContext(ctx: ScreenContext): boolean {
   );
 }
 
-function isDistractionContext(ctx: ScreenContext): boolean {
+const DRIFT_APPS = ['youtube', 'reddit', 'instagram', 'crunchyroll', 'tiktok', 'twitter', 'x.com'];
+
+/**
+ * Scores how strongly the current context looks like a distraction (0–100).
+ * Signals:
+ *   Known drift app                                  → +40
+ *   Activity contains scrolling/watching/browsing/feed → +25
+ *   Productivity signal is "distracted"              → +20
+ *   Current time in vulnerability window             → +15
+ */
+function distractionConfidence(ctx: ScreenContext): number {
+  const app  = ctx.activeApp.toLowerCase();
+  const act  = ctx.activity.toLowerCase();
+  const hour = new Date().getHours();
+  const min  = new Date().getMinutes();
+  let score  = 0;
+
+  if (DRIFT_APPS.some(d => app.includes(d))) score += 40;
+
+  if (
+    act.includes('scroll') || act.includes('watch') ||
+    act.includes('brows')  || act.includes('feed')
+  ) score += 25;
+
+  if (ctx.productivitySignal === 'distracted') score += 20;
+
+  // Vulnerability windows: 1–3 pm and 5:30–6:30 pm
+  const inAfternoon = hour >= 13 && hour < 15;
+  const inEvening   = (hour === 17 && min >= 30) || hour === 18;
+  if (inAfternoon || inEvening) score += 15;
+
+  return score;
+}
+
+/**
+ * Returns true when the distraction confidence, weighted by how long the user
+ * has already been in the current app today, reaches the threshold of 50.
+ *
+ * Duration weighting prevents false positives from quick visits:
+ *   < 5 min  → ×0.0   (no alert — too early to know)
+ *   < 10 min → ×0.4
+ *   < 20 min → ×0.7
+ *   < 30 min → ×0.9
+ *   30+ min  → ×1.0
+ */
+function isDistractionContext(ctx: ScreenContext): { detected: boolean; confidence: number } {
+  const confidence      = distractionConfidence(ctx);
+  const durationMinutes = getTimeOnCurrentApp() / 60_000;
+
+  const durationWeight =
+    durationMinutes < 5  ? 0.0 :
+    durationMinutes < 10 ? 0.4 :
+    durationMinutes < 20 ? 0.7 :
+    durationMinutes < 30 ? 0.9 :
+                           1.0;
+
+  const finalScore = confidence * durationWeight;
+  return { detected: finalScore >= 50, confidence };
+}
+
+/** Raw signal check for mode classification — no duration weighting. */
+function isRawDistractionSignal(ctx: ScreenContext): boolean {
   const app = ctx.activeApp.toLowerCase();
   return (
     ctx.productivitySignal === 'distracted' ||
-    app.includes('youtube') || app.includes('reddit') ||
-    app.includes('instagram') || app.includes('tiktok') ||
-    app.includes('twitter') || app.includes('x.com')
+    DRIFT_APPS.some(d => app.includes(d))
   );
 }
 
 function classifyMode(ctx: ScreenContext): ActivityMode {
   if (ctx.productivitySignal === 'idle') return 'idle';
-  if (isDistractionContext(ctx))         return 'distraction';
+  if (isRawDistractionSignal(ctx))       return 'distraction';
 
   const app = ctx.activeApp.toLowerCase();
   const act = ctx.activity.toLowerCase();
@@ -172,9 +232,10 @@ function onScreenChanged(ctx: ScreenContext): void {
     triggerContentQualityCheck();
   }
 
-  if (isDistractionContext(ctx)) {
-    console.log('[ScreenObserver] distraction context — notifying decision engine');
-    flagDistractionContext();
+  const { detected: distracted, confidence } = isDistractionContext(ctx);
+  if (distracted) {
+    console.log(`[ScreenObserver] distraction context (confidence ${confidence}) — notifying decision engine`);
+    flagDistractionContext(confidence);
   }
 
   if (isUnexpectedContext(prevMode, ctx)) {

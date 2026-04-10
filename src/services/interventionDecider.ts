@@ -553,14 +553,17 @@ export function triggerContentQualityCheck(): void {
 
 /**
  * Called by screenObserver when a distraction context is detected on screen change.
- * Moves the intervention gap back so the decision engine can fire within ~5 minutes
- * instead of waiting out the full 25-minute gap.
+ * Scales the gap reduction based on confidence: higher confidence fires sooner.
+ * confidence >= 80 → 2 min, >= 60 → 3 min, >= 50 → 5 min.
  */
-export function flagDistractionContext(): void {
-  const fiveMinAgo = Date.now() - INTERVENTION_GAP_MS + 5 * 60_000;
-  if (lastInterventionTime > fiveMinAgo) {
-    lastInterventionTime = fiveMinAgo;
-    console.log('[InterventionDecider] distraction flagged by screen observer — gap reduced to 5 min');
+export function flagDistractionContext(confidence: number): void {
+  const minsTillFire = confidence >= 80 ? 2 : confidence >= 60 ? 3 : 5;
+  const target = Date.now() - INTERVENTION_GAP_MS + minsTillFire * 60_000;
+  if (lastInterventionTime > target) {
+    lastInterventionTime = target;
+    console.log(
+      `[InterventionDecider] distraction flagged (confidence ${confidence}) — gap reduced to ${minsTillFire} min`,
+    );
   }
 }
 
