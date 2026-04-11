@@ -31,6 +31,7 @@ console.error('[Main] loading voiceListener');
 const { startVoiceListener, stopVoiceListener, setOrbWindow } = require('./services/voiceListener');
 const { startScreenMonitor, setOrbWindow: setScreenOrbWindow } = require('./services/screenAwareness');
 const { startScreenObserver, setOrbWindow: setObserverOrbWindow } = require('./services/screenObserver');
+const { startEmotionEngine } = require('./services/emotionEngine');
 console.error('[Main] loading conversationService');
 const { triggerConversation, stopConversation, setOrbWindow: setConvOrbWindow } = require('./services/conversationService');
 const { setOrbWindow: setTtsOrbWindow } = require('./services/elevenLabsService');
@@ -389,6 +390,8 @@ app.on('ready', () => {
     startScreenMonitor();
     console.log('[Main] starting screen observer');
     startScreenObserver();
+    console.log('[Main] starting emotion engine');
+    startEmotionEngine();
     console.log('[Main] starting wake-word listener');
     startWakeWordListener();
 

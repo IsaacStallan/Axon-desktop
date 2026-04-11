@@ -21,6 +21,10 @@ import {
 import { route, type TaskType }            from './modelRouter';
 import { buildFraming }                    from './psychologyLayer';
 import { setLastProactiveMessage }         from './proactiveContext';
+import {
+  getEmotionPromptFragment,
+  updateEmotionState,
+}                                          from './emotionEngine';
 import { getRecentContext }                from './screenAwareness';
 import { getTodayEvents, type CalendarEvent } from './calendarService';
 import { AXON_CAPABILITIES }               from './axonCapabilities';
@@ -104,6 +108,7 @@ export function checkPendingOutcome(): void {
     `[InterventionDecider] outcome: ${pendingOutcome.scoreAtFiring}% → ${currentScore}% — ` +
     (improved ? 'corrected ✓' : 'no change'),
   );
+  if (!improved) updateEmotionState('intervention_ignored');
   pendingOutcome = null;
 }
 
@@ -416,13 +421,16 @@ async function generateMessage(
     }
   }
 
-  const isBreak = type === 'break';
+  const isBreak    = type === 'break';
+  const emotionFrag = getEmotionPromptFragment();
 
   const system = isBreak
     ? `You are Axon — Isaac's AI. He has been heads-down and genuinely needs a break.
 Write ONE warm, specific spoken suggestion — 1–2 sentences.
 Tone: generous and supportive, NOT critical. Acknowledge the work done, recommend the rest.
 Be specific about duration. No markdown. No quotes. Just the spoken words.
+
+${emotionFrag}
 
 ${framing.instruction}
 
@@ -437,6 +445,8 @@ Rules:
 - If screen detail is provided, use it: reference the video title, site, or what he is actually doing
 - If cross-device context is provided, weave it in for maximum impact
 - No markdown, no quotes, no filler. Just the spoken line.
+
+${emotionFrag}
 
 ${framing.instruction}
 
@@ -565,6 +575,7 @@ export function flagDistractionContext(confidence: number): void {
       `[InterventionDecider] distraction flagged (confidence ${confidence}) — gap reduced to ${minsTillFire} min`,
     );
   }
+  updateEmotionState('drift_detected');
 }
 
 // ── Decision tree ──────────────────────────────────────────────────────────────

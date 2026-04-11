@@ -20,6 +20,7 @@ import { isSleepWord } from './voiceListener';
 import { formatProactiveContext } from './proactiveContext';
 import { getCurrentScreenSummary } from './screenAwareness';
 import { AXON_CAPABILITIES }       from './axonCapabilities';
+import { getPersonality, getEmotionPromptFragment } from './emotionEngine';
 
 
 
@@ -150,7 +151,7 @@ function getTimeOfDay(): string {
   return 'night';
 }
 
-function buildSystemPrompt(): string {
+async function buildSystemPrompt(): Promise<string> {
   const goal            = process.env.AXON_USER_GOAL ?? 'build a successful business and personal empire';
   const activitySummary = getActivitySummary();
   const timeOfDay       = getTimeOfDay();
@@ -158,7 +159,14 @@ function buildSystemPrompt(): string {
   const facts           = getLearnedFacts();
   const soul            = getSoul();
 
-  return `You are Axon — an AI inspired by JARVIS from Iron Man, built specifically for Isaac.
+  // Personality foundation (dynamically generated from memory) + emotion tone modifier
+  const personality  = await getPersonality();
+  const emotionFrag  = getEmotionPromptFragment();
+  const personalityHeader = personality
+    ? `== PERSONALITY (generated from knowing Isaac — follow this) ==\n${personality}\n== END PERSONALITY ==\n\n`
+    : '';
+
+  return `${personalityHeader}${emotionFrag}\n\nYou are Axon — an AI inspired by JARVIS from Iron Man, built specifically for Isaac.
 ${!hasGoals() ? `
 == IMMEDIATE ACTION REQUIRED — goals.json IS EMPTY ==
 The goals file has no entries. You must populate it NOW in this turn.
@@ -345,6 +353,8 @@ async function sendMessage(userText: string): Promise<string> {
   // First call — Claude may respond with text or decide to use a tool.
   // Haiku is ~3x faster than Sonnet for the short spoken replies Axon produces.
   // The soul/personality system prompt gives it all the context it needs.
+  const systemPrompt = await buildSystemPrompt();
+
   let response = await callWithRetry(() => client.messages.create({
     model:       'claude-sonnet-4-6',
     max_tokens:  500,
@@ -352,7 +362,7 @@ async function sendMessage(userText: string): Promise<string> {
     // When no goals are saved, force Claude to use a tool — prevents it from
     // saying "Done" as plain text without actually calling goal_add.
     tool_choice: !hasGoals() ? { type: 'any' as const } : { type: 'auto' as const },
-    system:      buildSystemPrompt(),
+    system:      systemPrompt,
     messages:    history,
   }));
 
@@ -390,7 +400,7 @@ async function sendMessage(userText: string): Promise<string> {
       model:      'claude-sonnet-4-6',
       max_tokens: 400,
       tools:      TOOLS,
-      system:     buildSystemPrompt(),
+      system:     systemPrompt,
       messages:   history,
     }));
   }
