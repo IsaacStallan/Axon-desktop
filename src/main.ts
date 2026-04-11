@@ -38,6 +38,7 @@ const { setOrbWindow: setTtsOrbWindow } = require('./services/elevenLabsService'
 console.error('[Main] loading briefingService');
 const { startBriefingService } = require('./services/briefingService');
 const { setOrbWindow: setSubAgentOrbWindow } = require('./services/subAgentOrchestrator');
+const { setOrbWindow: setCodingAgentOrbWindow } = require('./services/codingAgent');
 const { getPerformanceStats, getCognitiveStats } = require('./services/behaviourModel');
 const { isGmailConnected } = require('./services/gmailService');
 const { getAllDeviceStatuses } = require('./services/deviceCoordinator');
@@ -372,6 +373,7 @@ app.on('ready', () => {
     setConvOrbWindow(orbWindow);
     setTtsOrbWindow(orbWindow);
     setSubAgentOrbWindow(orbWindow);
+    setCodingAgentOrbWindow(orbWindow);
     setScreenOrbWindow(orbWindow);
     setObserverOrbWindow(orbWindow);
     // Send initial stats once renderer has loaded, then every 30 s

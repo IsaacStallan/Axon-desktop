@@ -478,6 +478,24 @@ export const TOOLS: Anthropic.Tool[] = [
       required: ['task'],
     },
   },
+
+  // ── Autonomous coding ─────────────────────────────────────────────────────────
+  {
+    name:        'run_coding_task',
+    description: 'Write and execute code autonomously to complete a task. Use when Isaac asks to build ' +
+                 'something, automate something, process data, or run a script. Axon will write the code, ' +
+                 'run it, fix any errors, and repeat until it works.',
+    input_schema: {
+      type:       'object',
+      properties: {
+        description: { type: 'string', description: 'What the code should do' },
+        language:    { type: 'string', enum: ['python', 'typescript', 'javascript', 'bash', 'auto'], description: 'Language to use (default: auto)' },
+        output_file: { type: 'string', description: 'Optional path to save the final working code' },
+        context:     { type: 'string', description: 'Any additional context, existing code, or file contents' },
+      },
+      required: ['description'],
+    },
+  },
 ];
 
 // ── Execution ─────────────────────────────────────────────────────────────────
@@ -871,6 +889,23 @@ export async function executeTool(
       case 'spawn_agents': {
         console.log('[Tool] spawn_agents:', input.task?.slice(0, 80));
         return await orchestrate(input.task ?? '');
+      }
+
+      // ── Autonomous coding ──────────────────────────────────────────────────────
+
+      case 'run_coding_task': {
+        console.log('[Tool] run_coding_task:', input.description?.slice(0, 80));
+        const { runCodingLoop } = require('./codingAgent');
+        const result = await runCodingLoop({
+          description: input.description ?? '',
+          language:    (input.language as 'python' | 'typescript' | 'javascript' | 'bash' | 'auto') ?? 'auto',
+          outputFile:  input.output_file || undefined,
+          context:     input.context || undefined,
+        });
+        if (result.success) {
+          return `Completed in ${result.attempts} attempt(s).${result.savedTo ? ` Saved to ${result.savedTo}.` : ''}\nOutput: ${result.output.slice(0, 300)}`;
+        }
+        return `Failed after ${result.attempts} attempt(s): ${result.error?.slice(0, 300) ?? 'unknown error'}`;
       }
 
       default:
