@@ -331,8 +331,14 @@ ${convoText}`,
 
     if (merged.length >= MAX_FACTS) {
       const before = merged.length;
-      merged = await consolidateFacts(merged);
-      console.log(`[Memory] consolidating — was ${before} facts, now ${merged.length}`);
+      console.log(`[Memory] consolidating — ${before} facts → target ~150`);
+      try {
+        merged = await consolidateFacts(merged);
+      } catch (e) {
+        console.warn('[Memory] consolidation failed — trimming to last 190 facts:', e);
+        merged = merged.slice(-190);
+      }
+      console.log(`[Memory] consolidating — ${before} facts → ${merged.length}`);
     }
 
     fs.writeFileSync(factsPath(), JSON.stringify(merged, null, 2), 'utf8');

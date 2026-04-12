@@ -285,7 +285,36 @@ async function firePrewritten(message: string, type: InterventionRecord['type'])
   }
 }
 
-// ── Mode 4: Calendar timing checks ────────────────────────────────────────────
+// ── Mode 4: Calendar blocking helpers ─────────────────────────────────────────
+
+interface CalendarBlockStatus {
+  blocked:      boolean;   // currently inside an event window
+  eventName:    string;
+  driftBlocked: boolean;   // event starts within 10 minutes (wrap-up window)
+}
+
+/** Assume 1-hour duration when CalendarEvent has no endMs. */
+const DEFAULT_EVENT_DURATION_MS = 60 * 60_000;
+
+function getCalendarBlockStatus(): CalendarBlockStatus {
+  const now = Date.now();
+
+  for (const event of calendarEvents) {
+    const endMs = event.startMs + DEFAULT_EVENT_DURATION_MS;
+    if (now >= event.startMs && now < endMs) {
+      return { blocked: true, eventName: event.title, driftBlocked: true };
+    }
+  }
+
+  for (const event of calendarEvents) {
+    const minsUntil = (event.startMs - now) / 60_000;
+    if (minsUntil > 0 && minsUntil <= 10) {
+      return { blocked: false, eventName: event.title, driftBlocked: true };
+    }
+  }
+
+  return { blocked: false, eventName: '', driftBlocked: false };
+}
 
 async function loadCalendarIfNeeded(): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
@@ -592,12 +621,22 @@ export async function evaluate(pattern: PatternResult): Promise<void> {
     console.log('[InterventionDecider] content quality checker started (2-min tick)');
   }
 
+  // Ensure today's calendar is loaded regardless of whether timing checks fire
+  try { await loadCalendarIfNeeded(); } catch { /* proceed without calendar */ }
+
   const now          = Date.now();
   const activityMode = detectActivityMode();
 
   // ── Mode 4: Calendar timing (independent of drift threshold) ────────────────
   const calendarFired = await checkCalendarTimings();
   if (calendarFired) return;
+
+  // ── Calendar-aware blocking ──────────────────────────────────────────────────
+  const calBlock = getCalendarBlockStatus();
+  if (calBlock.blocked) {
+    console.log(`[Intervention] skipped — user is in a calendar event: ${calBlock.eventName}`);
+    return;
+  }
 
   // ── Mode 3: Studying — offer comprehension check after 45 min ───────────────
   if (activityMode === 'studying') {
@@ -654,6 +693,12 @@ export async function evaluate(pattern: PatternResult): Promise<void> {
   if (now - lastInterventionTime < INTERVENTION_GAP_MS) return;
 
   const { driftProbability, tier, isCompoundVulnerable } = pattern;
+
+  // Event starts within 10 min — user is wrapping up; skip drift, allow recovery
+  if (calBlock.driftBlocked && tier !== 'recovery') {
+    console.log(`[Intervention] skipped — event "${calBlock.eventName}" starts within 10 minutes`);
+    return;
+  }
 
   // Mode 3: deep_work protection — raise all thresholds to 85%
   const protected85 = activityMode === 'deep_work';
