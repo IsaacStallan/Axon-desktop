@@ -285,35 +285,105 @@ async function firePrewritten(message: string, type: InterventionRecord['type'])
   }
 }
 
-// ── Mode 4: Calendar blocking helpers ─────────────────────────────────────────
+// ── Mode 4: Calendar classification + blocking ─────────────────────────────────
 
-interface CalendarBlockStatus {
-  blocked:      boolean;   // currently inside an event window
-  eventName:    string;
-  driftBlocked: boolean;   // event starts within 10 minutes (wrap-up window)
-}
+type CalendarEventType =
+  | 'work_block'   // deep work, study, coding sessions
+  | 'meeting'      // calls, standups, interviews
+  | 'personal'     // gym, meals, church, social
+  | 'travel'       // flights, drives, commutes
+  | 'free'         // breaks, rest, holidays
+  | 'unknown';     // anything else
 
 /** Assume 1-hour duration when CalendarEvent has no endMs. */
 const DEFAULT_EVENT_DURATION_MS = 60 * 60_000;
 
-function getCalendarBlockStatus(): CalendarBlockStatus {
-  const now = Date.now();
+const WORK_BLOCK_KW  = ['study', 'assignment', 'uni', 'work', 'deep work', 'focus', 'axon', 'grantforge', 'crest', 'coding', 'writing', 'research', 'homework'];
+const MEETING_KW     = ['meeting', 'call', 'standup', 'interview', 'sync', '1:1', 'zoom', 'teams', 'catch up', 'chat'];
+const PERSONAL_KW    = ['gym', 'lunch', 'dinner', 'breakfast', 'church', 'futsal', 'sport', 'house stallan', 'family', 'friends', 'social', 'party', 'date'];
+const TRAVEL_KW      = ['flight', 'drive', 'commute', 'travel', 'uber', 'train', 'bus'];
+const FREE_KW        = ['free', 'break', 'rest', 'holiday', 'off', 'personal time'];
 
+/** In-memory cache: title → type, persists for the process lifetime. */
+const eventTypeCache = new Map<string, CalendarEventType>();
+
+function classifyByKeyword(title: string): CalendarEventType | null {
+  const t = title.toLowerCase();
+  if (WORK_BLOCK_KW.some(k => t.includes(k)))  return 'work_block';
+  if (MEETING_KW.some(k => t.includes(k)))      return 'meeting';
+  if (PERSONAL_KW.some(k => t.includes(k)))     return 'personal';
+  if (TRAVEL_KW.some(k => t.includes(k)))       return 'travel';
+  if (FREE_KW.some(k => t.includes(k)))         return 'free';
+  return null;
+}
+
+async function classifyCalendarEvent(title: string): Promise<CalendarEventType> {
+  if (eventTypeCache.has(title)) return eventTypeCache.get(title)!;
+
+  // Pass 1 — keyword matching (no API call)
+  const kwResult = classifyByKeyword(title);
+  if (kwResult) {
+    eventTypeCache.set(title, kwResult);
+    return kwResult;
+  }
+
+  // Pass 2 — Haiku classification
+  try {
+    const resp = await client.messages.create({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 10,
+      messages:   [{
+        role:    'user',
+        content:
+          `Classify this calendar event title into one of: work_block, meeting, personal, travel, free, unknown.\n` +
+          `Title: "${title}"\n` +
+          `Respond with only the category word.`,
+      }],
+    });
+    const block  = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+    const raw    = block?.text.trim().toLowerCase() ?? '';
+    const valid: CalendarEventType[] = ['work_block', 'meeting', 'personal', 'travel', 'free', 'unknown'];
+    const result: CalendarEventType  = valid.includes(raw as CalendarEventType)
+      ? (raw as CalendarEventType)
+      : 'unknown';
+    eventTypeCache.set(title, result);
+    return result;
+  } catch {
+    eventTypeCache.set(title, 'unknown');
+    return 'unknown';
+  }
+}
+
+interface CalendarBlockStatus {
+  eventType:    CalendarEventType;
+  eventName:    string;
+  active:       boolean;   // currently inside an event window
+  driftBlocked: boolean;   // event starts within 10 minutes (wrap-up window)
+}
+
+async function getCalendarBlockStatus(): Promise<CalendarBlockStatus> {
+  const now = Date.now();
+  const none: CalendarBlockStatus = { eventType: 'unknown', eventName: '', active: false, driftBlocked: false };
+
+  // Check if currently inside an event
   for (const event of calendarEvents) {
     const endMs = event.startMs + DEFAULT_EVENT_DURATION_MS;
     if (now >= event.startMs && now < endMs) {
-      return { blocked: true, eventName: event.title, driftBlocked: true };
+      const eventType = await classifyCalendarEvent(event.title);
+      return { eventType, eventName: event.title, active: true, driftBlocked: true };
     }
   }
 
+  // Check 10-minute wrap-up window
   for (const event of calendarEvents) {
     const minsUntil = (event.startMs - now) / 60_000;
     if (minsUntil > 0 && minsUntil <= 10) {
-      return { blocked: false, eventName: event.title, driftBlocked: true };
+      const eventType = await classifyCalendarEvent(event.title);
+      return { eventType, eventName: event.title, active: false, driftBlocked: true };
     }
   }
 
-  return { blocked: false, eventName: '', driftBlocked: false };
+  return none;
 }
 
 async function loadCalendarIfNeeded(): Promise<void> {
@@ -405,8 +475,10 @@ async function checkCalendarTimings(): Promise<boolean> {
 // ── Message generation (Mode 2: screen-informed) ──────────────────────────────
 
 async function generateMessage(
-  pattern: PatternResult,
-  type:    InterventionRecord['type'],
+  pattern:   PatternResult,
+  type:      InterventionRecord['type'],
+  eventType?: CalendarEventType,
+  eventName?: string,
 ): Promise<string> {
   const curr    = getCurrentApp();
   const hour    = new Date().getHours();
@@ -450,8 +522,18 @@ async function generateMessage(
     }
   }
 
-  const isBreak    = type === 'break';
+  const isBreak     = type === 'break';
   const emotionFrag = getEmotionPromptFragment();
+
+  // Calendar context hint for the model
+  const calendarHint = eventType && eventType !== 'unknown' && eventName
+    ? eventType === 'work_block'
+      ? `\nCalendar context: Isaac has "${eventName}" scheduled right now — this is a work block. ` +
+        `If he is distracted, call it out directly: "You've got a work block scheduled right now and you're on ${curr.name} — that's exactly backwards."`
+      : eventType === 'personal'
+        ? `\nCalendar context: Isaac has "${eventName}" (personal block) on the calendar. Keep the tone light — this is a gentle check-in, not a hard push.`
+        : ''
+    : '';
 
   const system = isBreak
     ? `You are Axon — Isaac's AI. He has been heads-down and genuinely needs a break.
@@ -473,6 +555,7 @@ Rules:
 - ${type === 'recovery' ? 'Tier-3 mission-level: use the war statement. Cut to the core.' : 'Reference a goal or open commitment if relevant'}
 - If screen detail is provided, use it: reference the video title, site, or what he is actually doing
 - If cross-device context is provided, weave it in for maximum impact
+- If calendar context is provided, reference it — it makes the intervention sharper
 - No markdown, no quotes, no filler. Just the spoken line.
 
 ${emotionFrag}
@@ -490,7 +573,7 @@ Write the break suggestion.`
 Drift probability: ${pattern.driftProbability}% — ${pattern.reason}
 Time: ${hour}:00
 Goals:\n${goals || '(none set)'}
-${commits ? `Open commitments:\n${commits}` : ''}${crossDeviceCtx}${screenDetail}
+${commits ? `Open commitments:\n${commits}` : ''}${crossDeviceCtx}${screenDetail}${calendarHint}
 Write the intervention.`;
 
   console.log(`[InterventionDecider] techniques: ${framing.techniques.join(', ')}`);
@@ -510,9 +593,14 @@ Write the intervention.`;
 
 // ── Fire ───────────────────────────────────────────────────────────────────────
 
-async function fire(pattern: PatternResult, type: InterventionRecord['type']): Promise<void> {
+async function fire(
+  pattern:    PatternResult,
+  type:       InterventionRecord['type'],
+  eventType?: CalendarEventType,
+  eventName?: string,
+): Promise<void> {
   const curr    = getCurrentApp();
-  const message = await generateMessage(pattern, type);
+  const message = await generateMessage(pattern, type, eventType, eventName);
   if (!message) return;
 
   const record = logIntervention({
@@ -568,13 +656,18 @@ async function fire(pattern: PatternResult, type: InterventionRecord['type']): P
 
 // ── Speaker-lock-wrapped fire ──────────────────────────────────────────────────
 
-async function fireWithLock(pattern: PatternResult, type: InterventionRecord['type']): Promise<void> {
+async function fireWithLock(
+  pattern:    PatternResult,
+  type:       InterventionRecord['type'],
+  eventType?: CalendarEventType,
+  eventName?: string,
+): Promise<void> {
   if (!(await acquireSpeakerLock(60_000))) {
     console.log('[InterventionDecider] speaker lock held by another device — skipping');
     return;
   }
   try {
-    await fire(pattern, type);
+    await fire(pattern, type, eventType, eventName);
   } finally {
     await releaseSpeakerLock();
   }
@@ -632,10 +725,50 @@ export async function evaluate(pattern: PatternResult): Promise<void> {
   if (calendarFired) return;
 
   // ── Calendar-aware blocking ──────────────────────────────────────────────────
-  const calBlock = getCalendarBlockStatus();
-  if (calBlock.blocked) {
-    console.log(`[Intervention] skipped — user is in a calendar event: ${calBlock.eventName}`);
-    return;
+  const calBlock = await getCalendarBlockStatus();
+
+  if (calBlock.active) {
+    const { eventType, eventName } = calBlock;
+
+    if (eventType === 'meeting') {
+      console.log(`[Intervention] skipped — in meeting: ${eventName}`);
+      return;
+    }
+
+    if (eventType === 'travel') {
+      console.log(`[Intervention] skipped — in travel block: ${eventName}`);
+      return;
+    }
+
+    if (eventType === 'work_block') {
+      // Full interventions active — fall through with event context injected
+    }
+
+    if (eventType === 'personal') {
+      // Gentle check-in only — Tier 1, no environmental control
+      if (pattern.driftProbability < 60) return; // low drift → leave it entirely
+      if (now - lastInterventionTime < INTERVENTION_GAP_MS) return;
+      lastInterventionTime = now;
+      await fireWithLock(pattern, 'predictive', eventType, eventName);
+      return;
+    }
+
+    if (eventType === 'free') {
+      // Break suggestions only — no drift/distraction interventions
+      if (pattern.breakRecommended && now - lastBreakTime > BREAK_GAP_MS) {
+        lastBreakTime = now;
+        await fireWithLock(pattern, 'break', eventType, eventName);
+      }
+      return;
+    }
+
+    if (eventType === 'unknown') {
+      // Light touch — Tier 1 only
+      if (now - lastInterventionTime < INTERVENTION_GAP_MS) return;
+      lastInterventionTime = now;
+      await fireWithLock(pattern, 'predictive', eventType, eventName);
+      return;
+    }
   }
 
   // ── Mode 3: Studying — offer comprehension check after 45 min ───────────────
@@ -678,14 +811,14 @@ export async function evaluate(pattern: PatternResult): Promise<void> {
   // ── Ignored intervention streak ────────────────────────────────────────────
   if (pattern.ignoredInterventionStreak >= 3 && now - lastInterventionTime > INTERVENTION_GAP_MS) {
     lastInterventionTime = now;
-    await fireWithLock(pattern, 'early');
+    await fireWithLock(pattern, 'early', calBlock.eventType, calBlock.eventName);
     return;
   }
 
   // ── Break suggestion (independent cooldown) ────────────────────────────────
   if (pattern.breakRecommended && now - lastBreakTime > BREAK_GAP_MS) {
     lastBreakTime = now;
-    await fireWithLock(pattern, 'break');
+    await fireWithLock(pattern, 'break', calBlock.eventType, calBlock.eventName);
     return;
   }
 
@@ -695,7 +828,7 @@ export async function evaluate(pattern: PatternResult): Promise<void> {
   const { driftProbability, tier, isCompoundVulnerable } = pattern;
 
   // Event starts within 10 min — user is wrapping up; skip drift, allow recovery
-  if (calBlock.driftBlocked && tier !== 'recovery') {
+  if (calBlock.driftBlocked && !calBlock.active && tier !== 'recovery') {
     console.log(`[Intervention] skipped — event "${calBlock.eventName}" starts within 10 minutes`);
     return;
   }
@@ -712,5 +845,5 @@ export async function evaluate(pattern: PatternResult): Promise<void> {
   if (!shouldFire) return;
 
   lastInterventionTime = now;
-  await fireWithLock(pattern, tier);
+  await fireWithLock(pattern, tier, calBlock.eventType, calBlock.eventName);
 }
