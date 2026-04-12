@@ -20,6 +20,7 @@ import { isSleepWord } from './voiceListener';
 import { formatProactiveContext } from './proactiveContext';
 import { getCurrentScreenSummary } from './screenAwareness';
 import { getPersonality, getEmotionPromptFragment } from './emotionEngine';
+import { classifyMessageComplexity, routeSimple } from './modelRouter';
 
 
 
@@ -179,6 +180,41 @@ function getTimeOfDay(): string {
   if (h < 17) return 'afternoon';
   if (h < 21) return 'evening';
   return 'night';
+}
+
+// ── Model constants ────────────────────────────────────────────────────────────
+
+const SONNET_MODEL = 'claude-sonnet-4-6';
+const HAIKU_MODEL  = 'claude-haiku-4-5-20251001';
+
+// ── Trimmed system prompts (simple / moderate) ─────────────────────────────────
+
+/** Minimal prompt for Ollama — name, tone, and just enough live context. */
+function buildSimpleSystemPrompt(): string {
+  const curr        = getCurrentApp();
+  const emotionFrag = getEmotionPromptFragment();
+  const time        = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+  return (
+    `You are Axon — Isaac's personal AI. Respond in 1-2 sentences max. No markdown, no lists.\n` +
+    `${emotionFrag}\n` +
+    `Current time: ${time}. Current app: ${curr.name} (${Math.round(curr.durationMins)} min).`
+  );
+}
+
+/** Partial prompt for Haiku — personality + live context + 5 recent facts. No goals, no history. */
+function buildModerateSystemPrompt(): string {
+  const curr        = getCurrentApp();
+  const emotionFrag = getEmotionPromptFragment();
+  const recentFacts = (sessionFacts ?? getLearnedFacts()).slice(0, 5);
+  const time        = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+  return (
+    `You are Axon — Isaac's personal AI. Conversational, sharp, no markdown.\n` +
+    `${emotionFrag}\n` +
+    `Current time: ${time}. Isaac is in ${curr.name} (${Math.round(curr.durationMins)} min).\n` +
+    (recentFacts.length > 0
+      ? `Recent context:\n${recentFacts.map(f => `- ${f}`).join('\n')}`
+      : '')
+  );
 }
 
 async function buildSystemPrompt(): Promise<string> {
@@ -386,14 +422,29 @@ async function sendMessage(userText: string): Promise<string> {
   history.push({ role: 'user', content: userText });
   trimHistory();
 
-  // First call — Claude may respond with text or decide to use a tool.
-  // Haiku is ~3x faster than Sonnet for the short spoken replies Axon produces.
-  // The soul/personality system prompt gives it all the context it needs.
-  const systemPrompt = await buildSystemPrompt();
+  // ── Classify complexity and route ─────────────────────────────────────────
+  // history.length - 1 because we just pushed the user message above
+  const complexity = classifyMessageComplexity(userText, history.length - 1);
+
+  if (complexity === 'simple') {
+    console.log('[ModelRouter] simple → Ollama');
+    const reply = await routeSimple(buildSimpleSystemPrompt(), userText);
+    history.push({ role: 'assistant', content: reply });
+    trimHistory();
+    return reply;
+  }
+
+  const model        = complexity === 'moderate' ? HAIKU_MODEL : SONNET_MODEL;
+  const systemPrompt = complexity === 'complex'
+    ? await buildSystemPrompt()
+    : buildModerateSystemPrompt();
+  const maxFirstTok  = complexity === 'moderate' ? 300 : 500;
+
+  console.log(`[ModelRouter] ${complexity} → ${complexity === 'moderate' ? 'Haiku' : 'Sonnet'}`);
 
   let response = await callWithRetry(() => client.messages.create({
-    model:       'claude-sonnet-4-6',
-    max_tokens:  500,
+    model,
+    max_tokens:  maxFirstTok,
     tools:       TOOLS,
     // When no goals are saved, force Claude to use a tool — prevents it from
     // saying "Done" as plain text without actually calling goal_add.
@@ -433,7 +484,7 @@ async function sendMessage(userText: string): Promise<string> {
     trimHistory();
 
     response = await callWithRetry(() => client.messages.create({
-      model:      'claude-sonnet-4-6',
+      model,
       max_tokens: 400,
       tools:      TOOLS,
       system:     systemPrompt,
