@@ -19,7 +19,6 @@ import { getOpenCommitmentsText, extractCommitmentsFromSession, detectCompletion
 import { isSleepWord } from './voiceListener';
 import { formatProactiveContext } from './proactiveContext';
 import { getCurrentScreenSummary } from './screenAwareness';
-import { AXON_CAPABILITIES }       from './axonCapabilities';
 import { getPersonality, getEmotionPromptFragment } from './emotionEngine';
 
 
@@ -45,6 +44,37 @@ let lastAxonResponse   = '';
 // Buffers for memory — reset at the start of each conversation session
 const sessionExchanges: Exchange[] = [];
 let   turnCount = 0;
+
+// Semantic fact selection — Haiku selects 15 relevant facts once per session
+let sessionFacts: string[] | null = null;
+
+async function selectRelevantFacts(allFacts: string[], context: string): Promise<string[]> {
+  if (allFacts.length <= 15) return allFacts;
+  try {
+    const resp = await client.messages.create({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages:   [{
+        role:    'user',
+        content:
+          `You are selecting memory facts for an AI assistant about to have a conversation.\n` +
+          `Context: ${context}\n\n` +
+          `Select the 15 most relevant facts from the list below for this conversation context.\n` +
+          `Return ONLY a raw JSON array of the selected fact strings. No explanation, no markdown.\n\n` +
+          `Facts:\n${allFacts.map((f, i) => `${i + 1}. ${f}`).join('\n')}`,
+      }],
+    });
+    const block = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+    const raw   = block?.text.trim().replace(/^```json?\s*/i, '').replace(/```$/, '').trim() ?? '';
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) return allFacts.slice(-15);
+    const parsed = JSON.parse(match[0]) as unknown[];
+    const strings = parsed.filter((f): f is string => typeof f === 'string');
+    return strings.length >= 5 ? strings : allFacts.slice(-15);
+  } catch {
+    return allFacts.slice(-15);
+  }
+}
 
 // ── Transcript quality filters ────────────────────────────────────────────────
 
@@ -156,8 +186,16 @@ async function buildSystemPrompt(): Promise<string> {
   const activitySummary = getActivitySummary();
   const timeOfDay       = getTimeOfDay();
   const recentHistory   = getRecentConversations(3);
-  const facts           = getLearnedFacts();
   const soul            = getSoul();
+
+  // Semantic fact selection — runs once per session (cached after first call)
+  if (!sessionFacts) {
+    const allFacts     = getLearnedFacts();
+    const selectionCtx = `${activitySummary} | Goals: ${getGoalsText().slice(0, 200)}`;
+    sessionFacts       = await selectRelevantFacts(allFacts, selectionCtx);
+    console.log(`[Conversation] selected ${sessionFacts.length} relevant facts from ${allFacts.length} total`);
+  }
+  const facts = sessionFacts;
 
   // Personality foundation (dynamically generated from memory) + emotion tone modifier
   const personality  = await getPersonality();
@@ -317,9 +355,7 @@ Dynamic:
 - Comfortable with back-and-forth dialogue and banter
 - Maintain respect, but not distance
 
-Your goal: Help Isaac think better, decide better, and execute effectively — while maintaining a natural, fluid conversational dynamic. You know him. Act like it.
-
-${AXON_CAPABILITIES}`;
+Your goal: Help Isaac think better, decide better, and execute effectively — while maintaining a natural, fluid conversational dynamic. You know him. Act like it.`;
 }
 
 // ── Retry wrapper for 529 overloaded errors ───────────────────────────────────
@@ -492,7 +528,8 @@ export async function triggerConversation(): Promise<void> {
 
   // Reset per-session buffers
   sessionExchanges.splice(0, sessionExchanges.length);
-  turnCount = 0;
+  turnCount    = 0;
+  sessionFacts = null; // will be populated on first buildSystemPrompt call
 
   // ── Pre-flight: seed goals from memory if none saved ───────────────────────
   if (!hasGoals()) {

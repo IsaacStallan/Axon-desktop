@@ -1,6 +1,7 @@
 import { desktopCapturer, BrowserWindow } from 'electron';
 import Anthropic from '@anthropic-ai/sdk';
 import { EventEmitter } from 'events';
+import { getCurrentApp } from './windowMonitor';
 
 console.log('[ScreenAwareness] module loaded');
 
@@ -24,9 +25,14 @@ export const screenEvents = new EventEmitter();
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
 
-// Rolling window — raw screenshots are NEVER stored; only parsed ScreenContext
+// Rolling window — only the most recent context is kept
 const recentContexts: ScreenContext[] = [];
-const MAX_CONTEXTS = 5;
+const MAX_CONTEXTS = 1;
+
+// App-change gating — vision API only fires on app change or every 5 minutes
+const VISION_FORCE_INTERVAL_MS = 5 * 60_000;
+let lastVisionApp      = '';
+let lastVisionCallTime = 0;
 
 let orbWin:       BrowserWindow | null = null;
 let monitorTimer: NodeJS.Timeout | undefined;
@@ -173,6 +179,10 @@ export async function analyseScreen(): Promise<ScreenContext> {
     recentContexts.push(ctx);
     if (recentContexts.length > MAX_CONTEXTS) recentContexts.shift();
 
+    // Update gating trackers
+    lastVisionApp      = ctx.activeApp;
+    lastVisionCallTime = Date.now();
+
     console.log(
       `[ScreenAwareness] captured screen — ` +
       `active: ${ctx.activeApp} — activity: ${ctx.activity}, signal: ${ctx.productivitySignal}`,
@@ -196,12 +206,32 @@ export async function analyseScreen(): Promise<ScreenContext> {
 
 // ── Periodic monitor ──────────────────────────────────────────────────────────
 
+/**
+ * Runs every 30 s (cheap — no API call by default).
+ * Fires the vision API only when the active app has changed OR 5 minutes have
+ * elapsed since the last vision call. Otherwise reuses the cached context.
+ */
+async function pollScreen(): Promise<void> {
+  const currentApp = getCurrentApp().name;
+  const now        = Date.now();
+  const appChanged = currentApp.toLowerCase() !== lastVisionApp.toLowerCase();
+  const forceByAge = now - lastVisionCallTime >= VISION_FORCE_INTERVAL_MS;
+
+  if (appChanged || forceByAge) {
+    console.log(
+      `[ScreenAwareness] vision call — ${appChanged ? `app changed: ${currentApp}` : '5 min elapsed'}`,
+    );
+    await analyseScreen();
+  }
+  // else: reuse cached context — no API call
+}
+
 export function startScreenMonitor(intervalMs = 30_000): void {
   if (monitorTimer) clearInterval(monitorTimer);
-  console.log(`[ScreenAwareness] starting monitor (every ${intervalMs / 1000}s)`);
+  console.log(`[ScreenAwareness] starting monitor (every ${intervalMs / 1000}s, vision gated)`);
   // First capture on next tick — gives Electron time to settle after startup
   setTimeout(() => { void analyseScreen(); }, 5_000);
-  monitorTimer = setInterval(() => { void analyseScreen(); }, intervalMs);
+  monitorTimer = setInterval(() => { void pollScreen(); }, intervalMs);
 }
 
 export function stopScreenMonitor(): void {
@@ -214,7 +244,7 @@ export function stopScreenMonitor(): void {
 
 // ── Getters ────────────────────────────────────────────────────────────────────
 
-/** Returns last 5 screen contexts (no raw image data — privacy safe). */
+/** Returns the most recent screen context (no raw image data — privacy safe). */
 export function getRecentContext(): ScreenContext[] {
   return [...recentContexts];
 }
