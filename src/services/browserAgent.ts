@@ -104,16 +104,21 @@ export async function browserScreenshot(): Promise<string> {
 
 export async function browserSearch(
   query:  string,
-  engine: 'google' | 'youtube' | 'reddit' = 'google',
+  engine: 'bing' | 'youtube' | 'reddit' | 'google' = 'bing',
 ): Promise<string> {
   const urls: Record<string, string> = {
+    // Bing is the default — significantly less aggressive about bot detection than Google.
+    bing:    `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
     google:  `https://www.google.com/search?q=${encodeURIComponent(query)}`,
     youtube: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
     reddit:  `https://www.reddit.com/search/?q=${encodeURIComponent(query)}&sort=relevance`,
   };
 
+  // Treat 'google' calls as 'bing' to avoid bot-detection blocks.
+  const resolvedEngine = engine === 'google' ? 'bing' : engine;
+
   const p = await getPage();
-  await p.goto(urls[engine], { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  await p.goto(urls[resolvedEngine], { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
   // Extract readable text result summary
   const text = await p.evaluate(() => {
@@ -123,7 +128,7 @@ export async function browserSearch(
     return document.body.innerText ?? '';
   });
 
-  return `${engine} search: "${query}"\n\n${text.slice(0, 3000)}`;
+  return `${resolvedEngine} search: "${query}"\n\n${text.slice(0, 3000)}`;
 }
 
 export async function browserScroll(direction: 'up' | 'down', amount: number): Promise<string> {

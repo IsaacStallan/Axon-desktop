@@ -14,10 +14,12 @@ export type TaskType =
   | 'pattern_analysis'; // Tier 2 — Claude Haiku
 
 export interface RouteOptions {
-  taskType:   TaskType;
-  system:     string;
-  prompt:     string;
-  maxTokens?: number;
+  taskType:         TaskType;
+  system:           string;
+  prompt:           string;
+  maxTokens?:       number;
+  /** Set true when tool calls are expected (research, search, browser tasks). */
+  requiresToolUse?: boolean;
 }
 
 // ── Model assignments ──────────────────────────────────────────────────────────
@@ -42,6 +44,23 @@ const ANTHROPIC_MODELS: Record<Exclude<Tier, 'ollama'>, string> = {
 
 // ── Conversation message complexity classifier ─────────────────────────────────
 // Pure heuristics — no API call. Runs before every conversation turn.
+
+// ── Tool-use detection ─────────────────────────────────────────────────────────
+
+const TOOL_USE_KW_RE = /\b(search|look up|find|research|browse|open|visit|go to|check|wikipedia|bing|google|web|url|http|news|weather|stock|price|latest|current|today'?s|who is|what is the|where is|when (did|is|was)|how (much|many)|reddit|youtube)\b/i;
+
+/**
+ * Returns true if the request should be forced to Sonnet because tool use
+ * is expected — either via the explicit flag or by keyword heuristics on the
+ * prompt, or because a previous assistant turn invoked tools.
+ */
+export function requiresToolUse(
+  prompt:               string,
+  explicitFlag:         boolean = false,
+  prevAssistantUsedTools: boolean = false,
+): boolean {
+  return explicitFlag || prevAssistantUsedTools || TOOL_USE_KW_RE.test(prompt);
+}
 
 const GREETING_RE     = /^(hey|hello|hi|axon|what'?s up|you there|morning|evening)\b\.?$/i;
 const CONFIRM_RE      = /^(yes|no|ok|okay|sure|yep|nope|nah|sounds good|do it|go ahead|got it|perfect|thanks|thank you|cool|great|nice|done|fine)\b\.?$/i;
@@ -186,8 +205,15 @@ async function callAnthropic(
  * Never throws — always returns a string.
  */
 export async function route(opts: RouteOptions): Promise<string> {
-  const { taskType, system, prompt, maxTokens = 120 } = opts;
-  const tier = TIER_MAP[taskType];
+  const { taskType, system, prompt, maxTokens = 120, requiresToolUse: needsTools = false } = opts;
+  let tier = TIER_MAP[taskType];
+
+  // Tool-use override: Haiku and Ollama cannot invoke tools — force Sonnet.
+  if ((tier === 'haiku' || tier === 'ollama') && requiresToolUse(prompt, needsTools)) {
+    console.log(`[ModelRouter] ${taskType} → ${tier} → sonnet (tool-use override)`);
+    callCounts.sonnet++;
+    return callAnthropic(ANTHROPIC_MODELS.sonnet, system, prompt, maxTokens);
+  }
 
   console.log(`[ModelRouter] ${taskType} → ${tier}`);
 
@@ -218,6 +244,13 @@ export async function route(opts: RouteOptions): Promise<string> {
  * Never throws.
  */
 export async function routeSimple(system: string, userText: string): Promise<string> {
+  // Tool-use override: skip Ollama and Haiku entirely if tools are expected.
+  if (requiresToolUse(userText)) {
+    console.log('[ModelRouter] simple → sonnet (tool-use override)');
+    callCounts.sonnet++;
+    return callAnthropic(ANTHROPIC_MODELS.sonnet, system, userText, 300);
+  }
+
   // Try Ollama
   const ollamaResult = await callOllama(system, userText);
   if (ollamaResult) {
