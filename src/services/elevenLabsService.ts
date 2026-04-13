@@ -39,13 +39,32 @@ function buildWavHeader(dataByteLength: number): Buffer {
   return h;
 }
 
+// ── Symbol sanitisation ───────────────────────────────────────────────────────
+
+/** Remove/replace symbols Claude commonly produces before sending to TTS. */
+function sanitiseForTTS(text: string): string {
+  return text
+    .replace(/—/g, ', ')                           // em dash → pause
+    .replace(/–/g, ', ')                           // en dash → pause
+    .replace(/\*\*(.*?)\*\*/g, '$1')               // bold markdown → plain
+    .replace(/\*(.*?)\*/g, '$1')                   // italic markdown → plain
+    .replace(/`(.*?)`/g, '$1')                     // inline code → plain
+    .replace(/```[\s\S]*?```/g, '')                // code blocks → remove
+    .replace(/#{1,6}\s/g, '')                      // markdown headers → remove
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')       // links → just text
+    .replace(/[•·]/g, ', ')                        // bullets → pause
+    .replace(/\n{2,}/g, '. ')                      // double newlines → sentence break
+    .replace(/\n/g, ' ')                           // single newlines → space
+    .trim();
+}
+
 // ── Sentence-boundary splitting ───────────────────────────────────────────────
 
 /** Split text into chunks no larger than maxChars, breaking at sentence ends. */
 function splitOnSentences(text: string, maxChars: number): string[] {
   if (text.length <= maxChars) return [text];
 
-  const sentences = text.match(/[^.!?]*[.!?]+\s*/g) ?? [text];
+  const sentences = text.match(/[^.!?]+[.!?]+/g) ?? [text];
   const chunks: string[] = [];
   let current = '';
 
@@ -138,16 +157,19 @@ async function speakChunk(text: string): Promise<void> {
 // ── Public speak() — splits long text, speaks all chunks sequentially ─────────
 
 export async function speak(text: string): Promise<void> {
-  console.log('[ElevenLabs] speak:', text.slice(0, 60));
+  console.log('[ElevenLabs] speak:', text.slice(0, 80));
 
   if (!API_KEY || !VOICE_ID) {
     console.warn('[ElevenLabs] missing credentials — skipping TTS');
     return;
   }
 
+  // Sanitise markdown/symbols before sending to ElevenLabs.
+  const sanitised = sanitiseForTTS(text);
+
   // Buffer the full response before playing — streaming PCM to SoX stdin
   // causes premature EOF on macOS after the first chunk.
-  const chunks = splitOnSentences(text, 2000);
+  const chunks = splitOnSentences(sanitised, 1800);
   if (chunks.length > 1) {
     console.log(`[ElevenLabs] text split into ${chunks.length} chunks for sequential delivery`);
   }
@@ -157,6 +179,7 @@ export async function speak(text: string): Promise<void> {
 
   try {
     for (const chunk of chunks) {
+      if (chunk.trim().length === 0) continue;
       await speakChunk(chunk);
     }
   } catch (e) {
