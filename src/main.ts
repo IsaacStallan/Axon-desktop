@@ -40,6 +40,7 @@ const { startBriefingService } = require('./services/briefingService');
 const { setOrbWindow: setSubAgentOrbWindow } = require('./services/subAgentOrchestrator');
 const { setOrbWindow: setCodingAgentOrbWindow } = require('./services/codingAgent');
 const { getPerformanceStats, getCognitiveStats } = require('./services/behaviourModel');
+const { getDailyTotal, getSessionTotal } = require('./services/costTracker');
 const { isGmailConnected } = require('./services/gmailService');
 const { getAllDeviceStatuses } = require('./services/deviceCoordinator');
 console.error('[Main] all imports done');
@@ -231,7 +232,11 @@ async function sendStats(): Promise<void> {
 
   const openApps    = await getOpenApps();
   const performance = getPerformanceStats();
-  const capacity    = getCognitiveStats(screenTimeMins);
+  const capacity    = {
+    ...getCognitiveStats(screenTimeMins),
+    todayCost:   getDailyTotal()   as number,
+    sessionCost: getSessionTotal() as number,
+  };
 
   // Capabilities status
   const gmailConnected = isGmailConnected() as boolean;

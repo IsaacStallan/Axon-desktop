@@ -2,6 +2,7 @@ import { desktopCapturer, BrowserWindow } from 'electron';
 import Anthropic from '@anthropic-ai/sdk';
 import { EventEmitter } from 'events';
 import { getCurrentApp } from './windowMonitor';
+import { recordTokens, recordVision } from './costTracker';
 
 console.log('[ScreenAwareness] module loaded');
 
@@ -151,6 +152,8 @@ export async function analyseScreen(): Promise<ScreenContext> {
       }],
     });
 
+    recordTokens(response.model, response.usage.input_tokens, response.usage.output_tokens);
+    recordVision();
     const textBlock = response.content.find(b => b.type === 'text');
     const raw       = textBlock?.type === 'text' ? textBlock.text.trim() : '';
 

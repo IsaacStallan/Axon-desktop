@@ -40,6 +40,8 @@ interface AxonStats {
     lastBreakMins:     number;
     screenTimeMins:    number;
     followThrough:     number | null;
+    todayCost?:        number;
+    sessionCost?:      number;
   };
   capabilities?: {
     gmailConnected:   boolean;
@@ -143,11 +145,12 @@ window.axon.onStatsUpdate((stats: AxonStats) => {
   // ── Capacity panel ──────────────────────────────────────────────────────────
   const capList = get('capacity-list');
   if (capList && stats.capacity) {
-    const { cognitiveCapacity, lastBreakMins, screenTimeMins, followThrough } = stats.capacity;
-    const ftText = followThrough !== null ? `${followThrough}%` : '—';
-    const h = Math.floor(screenTimeMins / 60);
-    const m = screenTimeMins % 60;
+    const { cognitiveCapacity, lastBreakMins, screenTimeMins, followThrough, todayCost } = stats.capacity;
+    const ftText    = followThrough !== null ? `${followThrough}%` : '—';
+    const h         = Math.floor(screenTimeMins / 60);
+    const m         = screenTimeMins % 60;
     const screenStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    const costStr   = todayCost !== undefined ? `$${todayCost.toFixed(4)}` : '—';
     capList.innerHTML = `
       <div class="panel-row">
         <span class="panel-row-label">COGNITIVE</span>
@@ -165,6 +168,10 @@ window.axon.onStatsUpdate((stats: AxonStats) => {
       <div class="panel-row">
         <span class="panel-row-label">FOLLOW-THROUGH</span>
         <span class="panel-row-value">${ftText}</span>
+      </div>
+      <div class="panel-row">
+        <span class="panel-row-label">TODAY</span>
+        <span class="panel-row-value cyan">${costStr}</span>
       </div>
     `;
   }

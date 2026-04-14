@@ -21,6 +21,7 @@ import { formatProactiveContext } from './proactiveContext';
 import { getCurrentScreenSummary } from './screenAwareness';
 import { getPersonality, getEmotionPromptFragment } from './emotionEngine';
 import { classifyMessageComplexity, routeSimple } from './modelRouter';
+import { recordTokens } from './costTracker';
 
 
 
@@ -65,6 +66,7 @@ async function selectRelevantFacts(allFacts: string[], context: string): Promise
           `Facts:\n${allFacts.map((f, i) => `${i + 1}. ${f}`).join('\n')}`,
       }],
     });
+    recordTokens(resp.model, resp.usage.input_tokens, resp.usage.output_tokens);
     const block = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
     const raw   = block?.text.trim().replace(/^```json?\s*/i, '').replace(/```$/, '').trim() ?? '';
     const match = raw.match(/\[[\s\S]*\]/);
@@ -452,6 +454,7 @@ async function sendMessage(userText: string): Promise<string> {
     system:      systemPrompt,
     messages:    history,
   }));
+  recordTokens(response.model, response.usage.input_tokens, response.usage.output_tokens);
 
   // ── Tool-use loop ──────────────────────────────────────────────────────────
   // Claude can chain multiple tool calls; we resolve each one before continuing.
@@ -490,6 +493,7 @@ async function sendMessage(userText: string): Promise<string> {
       system:     systemPrompt,
       messages:   history,
     }));
+    recordTokens(response.model, response.usage.input_tokens, response.usage.output_tokens);
   }
 
   // ── Extract the final spoken reply ────────────────────────────────────────
@@ -538,6 +542,7 @@ async function seedGoalsFromMemory(): Promise<void> {
       }],
     });
 
+    recordTokens(resp.model, resp.usage.input_tokens, resp.usage.output_tokens);
     const text  = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text ?? '';
     const match = text.match(/\[[\s\S]*?\]/);
     if (!match) { console.log('[Conversation] no goal JSON found in extraction response'); return; }
