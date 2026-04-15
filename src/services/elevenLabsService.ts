@@ -20,6 +20,33 @@ const TMP_FILE    = join(tmpdir(), 'axon_tts.wav');
 
 export let isSpeaking = false;
 
+// ── Interrupt state ───────────────────────────────────────────────────────────
+
+let currentPlayback:  { kill: () => void } | null = null;
+let interruptedText:  string | null = null;
+let speakInterrupted: boolean = false;
+
+/** Store the full text currently being spoken (called before each speak()). */
+export function setCurrentSpeechText(text: string): void {
+  interruptedText = text;
+}
+
+/**
+ * Immediately kill current TTS playback.
+ * Returns the text that was being spoken so callers can save it as context.
+ * Returns null if nothing was playing.
+ */
+export function interruptSpeech(): string | null {
+  speakInterrupted = true;
+  if (currentPlayback) {
+    currentPlayback.kill();
+    currentPlayback = null;
+  }
+  const wasSaying = interruptedText;
+  interruptedText  = null;
+  return wasSaying;
+}
+
 // Build a minimal 44-byte WAV header for 16-bit mono PCM
 function buildWavHeader(dataByteLength: number): Buffer {
   const h = Buffer.alloc(44);
@@ -125,6 +152,9 @@ async function speakChunk(text: string): Promise<void> {
 
     const player = spawn(playerPath, playerArgs, { shell: false });
 
+    // Track for interrupt
+    currentPlayback = { kill: () => player.kill() };
+
     const timer = setTimeout(() => {
       console.warn('[ElevenLabs] playback hard cap — killing player');
       player.kill();
@@ -133,7 +163,10 @@ async function speakChunk(text: string): Promise<void> {
 
     player.on('close', (code) => {
       clearTimeout(timer);
-      if (code !== 0 && code !== null) console.warn('[ElevenLabs] player exited with code:', code);
+      currentPlayback = null;
+      if (code !== 0 && code !== null && !speakInterrupted) {
+        console.warn('[ElevenLabs] player exited with code:', code);
+      }
       resolve();
     });
 
@@ -164,6 +197,10 @@ export async function speak(text: string): Promise<void> {
     return;
   }
 
+  // Reset interrupt flag and store full text for interrupt context
+  speakInterrupted = false;
+  setCurrentSpeechText(text);
+
   // Sanitise markdown/symbols before sending to ElevenLabs.
   const sanitised = sanitiseForTTS(text);
 
@@ -179,13 +216,20 @@ export async function speak(text: string): Promise<void> {
 
   try {
     for (const chunk of chunks) {
+      if (speakInterrupted) break;
       if (chunk.trim().length === 0) continue;
       await speakChunk(chunk);
     }
   } catch (e) {
-    console.warn('[ElevenLabs] TTS failed:', e);
+    if (!speakInterrupted) console.warn('[ElevenLabs] TTS failed:', e);
   } finally {
     isSpeaking = false;
-    orbWin?.webContents.send('orb:state', 'idle');
+    // Don't send 'idle' on interrupt — the interrupt handler sets 'listening' instead
+    if (!speakInterrupted) {
+      orbWin?.webContents.send('orb:state', 'idle');
+    }
+    // Clear stored text on normal completion; on interrupt it was already cleared
+    interruptedText  = null;
+    speakInterrupted = false;
   }
 }

@@ -33,7 +33,7 @@ const { startScreenMonitor, setOrbWindow: setScreenOrbWindow } = require('./serv
 const { startScreenObserver, setOrbWindow: setObserverOrbWindow } = require('./services/screenObserver');
 const { startEmotionEngine } = require('./services/emotionEngine');
 console.error('[Main] loading conversationService');
-const { triggerConversation, stopConversation, setOrbWindow: setConvOrbWindow } = require('./services/conversationService');
+const { triggerConversation, stopConversation, setOrbWindow: setConvOrbWindow, handleInterrupt } = require('./services/conversationService');
 const { setOrbWindow: setTtsOrbWindow } = require('./services/elevenLabsService');
 console.error('[Main] loading briefingService');
 const { startBriefingService } = require('./services/briefingService');
@@ -286,6 +286,11 @@ function startWakeWordListener(): void {
 }
 
 // ── IPC: renderer signals ───────────────────────────────────────────────────
+ipcMain.on('axon:interrupt', () => {
+  console.log('[Main] interrupt triggered via UI');
+  (handleInterrupt as () => void)();
+});
+
 ipcMain.on('orb:tap', () => {
   console.log('[Main] orb tapped');
   if (isConversing) {
@@ -409,6 +414,15 @@ app.on('ready', () => {
     });
     if (!hotkeyRegistered) {
       console.warn('[Main] globalShortcut CommandOrControl+Shift+A could not be registered');
+    }
+
+    // Global hotkey — Cmd+Shift+I interrupts current TTS playback
+    const interruptRegistered = globalShortcut.register('CommandOrControl+Shift+I', () => {
+      console.log('[Main] interrupt hotkey fired');
+      (handleInterrupt as () => void)();
+    });
+    if (!interruptRegistered) {
+      console.warn('[Main] globalShortcut CommandOrControl+Shift+I could not be registered');
     }
 
     // ── Sleep / wake handling ────────────────────────────────────────────────

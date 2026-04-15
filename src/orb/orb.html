@@ -461,6 +461,29 @@
     }
 
 
+    /* ── Interrupt button ────────────────────────────────────────────────────── */
+    #interrupt-btn {
+      background:    none;
+      border:        1px solid var(--cyan);
+      color:         var(--cyan);
+      font-size:     9px;
+      letter-spacing: 1px;
+      padding:       3px 8px;
+      cursor:        pointer;
+      border-radius: 2px;
+      flex-shrink:   0;
+      -webkit-app-region: no-drag;
+      transition:    background 0.15s;
+      display:       none;
+    }
+
+    #interrupt-btn:hover {
+      background: rgba(0, 212, 255, 0.12);
+    }
+
+    /* Only visible while Axon is speaking */
+    body.speaking #interrupt-btn { display: inline-block; }
+
     /* ── Status dot colours ───────────────────────────────────────────────────── */
     body.listening  #status-dot { background: var(--cyan); }
     body.thinking   #status-dot { background: #FFFFFF; }
@@ -528,6 +551,7 @@
       <span id="title">AXON</span>
       <span id="status-dot"></span>
       <span id="status-text">IDLE</span>
+      <button id="interrupt-btn">⏹ Interrupt</button>
       <span id="clock">00:00</span>
       <div id="window-controls">
         <button id="minimise-btn" title="Minimise">—</button>

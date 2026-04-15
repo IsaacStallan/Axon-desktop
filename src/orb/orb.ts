@@ -11,6 +11,7 @@ declare global {
       onAgentsUpdate:   (cb: (agents: AgentStatus[]) => void) => void;
       tapOrb:           () => void;
       ready:            () => void;
+      interruptAxon:    () => void;
       minimiseWindow:   () => void;
       toPill:           () => void;
       fromPill:         () => void;
@@ -501,6 +502,12 @@ let isPillMode = false;
   panel.style.display    = 'flex';
   isPillMode = false;
   window.axon.fromPill();
+});
+
+// ── Interrupt button ──────────────────────────────────────────────────────────
+
+(document.getElementById('interrupt-btn') as HTMLElement).addEventListener('click', () => {
+  window.axon.interruptAxon();
 });
 
 // ── Ready signal ──────────────────────────────────────────────────────────────

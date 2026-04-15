@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { BrowserWindow } from 'electron';
-import { speak, isSpeaking } from './elevenLabsService';
+import { speak, isSpeaking, interruptSpeech } from './elevenLabsService';
 import { getActivitySummary, getCurrentApp, getProductivityScore } from './windowMonitor';
 import { transcribe } from './whisperService';
 import {
@@ -27,6 +27,24 @@ import { recordTokens } from './costTracker';
 
 let orbWin: BrowserWindow | null = null;
 export function setOrbWindow(win: BrowserWindow): void { orbWin = win; }
+
+// ── Interrupt state ───────────────────────────────────────────────────────────
+
+let pendingInterruptContext: string | null = null;
+
+/**
+ * Stop current TTS playback and save what was being said.
+ * Called from main.ts IPC handler and the Cmd+Shift+I hotkey.
+ */
+export function handleInterrupt(): void {
+  const wasSaying = interruptSpeech();
+  if (wasSaying) {
+    pendingInterruptContext = wasSaying;
+    console.log('[Conversation] interrupted mid-speech — context saved');
+  }
+  // Immediately flip the orb to listening so the user knows we heard them
+  orbWin?.webContents.send('orb:state', 'listening');
+}
 
 const client = new Anthropic({
   apiKey:     process.env.ANTHROPIC_API_KEY ?? '',
@@ -275,7 +293,19 @@ async function buildSystemPrompt(): Promise<string> {
     ? `== PERSONALITY (generated from knowing Isaac — follow this) ==\n${personality}\n== END PERSONALITY ==\n\n`
     : '';
 
-  return `${personalityHeader}${emotionFrag}\n\nYou are Axon — an AI inspired by JARVIS from Iron Man, built specifically for Isaac.
+  // Inject interrupt context if present, then clear it (one-shot)
+  let interruptNote = '';
+  if (pendingInterruptContext) {
+    interruptNote = (
+      `NOTE: You were mid-sentence saying the following when Isaac interrupted you:\n` +
+      `"${pendingInterruptContext}"\n` +
+      `Be aware of this context. If relevant to Isaac's new question, acknowledge it briefly. ` +
+      `If he has moved on entirely, don't force it.\n\n`
+    );
+    pendingInterruptContext = null;
+  }
+
+  return `${interruptNote}${personalityHeader}${emotionFrag}\n\nYou are Axon — an AI inspired by JARVIS from Iron Man, built specifically for Isaac.
 ${!hasGoals() ? `
 == IMMEDIATE ACTION REQUIRED — goals.json IS EMPTY ==
 The goals file has no entries. You must populate it NOW in this turn.
