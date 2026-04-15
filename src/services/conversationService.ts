@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { BrowserWindow } from 'electron';
-import { speak, isSpeaking, interruptSpeech } from './elevenLabsService';
+import { speak, isSpeaking, interruptSpeech, speakStreaming, waitForSpeakQueue, resetSpeakQueue } from './elevenLabsService';
 import { getActivitySummary, getCurrentApp, getProductivityScore } from './windowMonitor';
 import { transcribe } from './whisperService';
 import {
@@ -48,6 +48,7 @@ let pendingInterruptContext: string | null = null;
 export function handleInterrupt(): void {
   console.log('[Interrupt] stopping speech → starting listen');
 
+  resetSpeakQueue();
   const wasSaying = interruptSpeech();
   if (wasSaying) {
     pendingInterruptContext = wasSaying;
@@ -86,6 +87,7 @@ const MAX_HISTORY = 20; // raised from 12 — tool calls add extra turns to hist
 
 let conversationActive = false;
 let lastAxonResponse   = '';
+let lastSendDidStream  = false;
 
 // Buffers for memory — reset at the start of each conversation session
 const sessionExchanges: Exchange[] = [];
@@ -507,11 +509,32 @@ async function callWithRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
   throw new Error('callWithRetry exhausted');
 }
 
+// ── Sentence boundary extractor for streaming TTS ────────────────────────────
+
+/**
+ * Extract complete sentences (ending with . ! ?) from a running text buffer.
+ * Returns the extracted sentences and the leftover fragment (incomplete sentence).
+ */
+function extractCompleteSentences(buffer: string): { sentences: string[]; remainder: string } {
+  const re = /([^.!?]*[.!?]+\s*)/g;
+  const sentences: string[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(buffer)) !== null) {
+    sentences.push(match[1].trimEnd());
+    lastIndex = re.lastIndex;
+  }
+  return { sentences, remainder: buffer.slice(lastIndex) };
+}
+
 // ── Send to Claude (with tool-use support) ────────────────────────────────────
 
 async function sendMessage(userText: string): Promise<string> {
   history.push({ role: 'user', content: userText });
   trimHistory();
+
+  const t0 = Date.now();
+  console.log('[Latency] transcript received');
 
   // ── Classify complexity and route ─────────────────────────────────────────
   // history.length - 1 because we just pushed the user message above
@@ -519,6 +542,7 @@ async function sendMessage(userText: string): Promise<string> {
 
   if (complexity === 'simple') {
     console.log('[ModelRouter] simple → Ollama');
+    lastSendDidStream = false;
     const reply = await routeSimple(buildSimpleSystemPrompt(), userText);
     history.push({ role: 'assistant', content: reply });
     trimHistory();
@@ -533,12 +557,131 @@ async function sendMessage(userText: string): Promise<string> {
 
   console.log(`[ModelRouter] ${complexity} → ${complexity === 'moderate' ? 'Haiku' : 'Sonnet'}`);
 
+  // ── Complex → Sonnet with streaming ──────────────────────────────────────
+  // Stream the response so the first sentence reaches TTS before Claude
+  // finishes generating — dramatically reduces time-to-first-audio.
+  if (complexity === 'complex') {
+    lastSendDidStream = true;
+    let textBuffer       = '';
+    let firstTokenLogged = false;
+    let firstAudioLogged = false;
+
+    const stream = client.messages.stream({
+      model:       SONNET_MODEL,
+      max_tokens:  maxFirstTok,
+      tools:       TOOLS,
+      // When no goals are saved, force Claude to use a tool.
+      tool_choice: !hasGoals() ? { type: 'any' as const } : { type: 'auto' as const },
+      system:      systemPrompt,
+      messages:    history,
+    });
+
+    stream.on('text', (chunk: string) => {
+      if (!firstTokenLogged) {
+        console.log(`[Latency] first token: +${Date.now() - t0}ms`);
+        firstTokenLogged = true;
+      }
+      textBuffer += chunk;
+      const { sentences, remainder } = extractCompleteSentences(textBuffer);
+      textBuffer = remainder;
+      for (const sentence of sentences) {
+        const cleaned = sentence.trim();
+        if (!cleaned) continue;
+        if (!firstAudioLogged) {
+          console.log(`[Latency] first audio: +${Date.now() - t0}ms`);
+          firstAudioLogged = true;
+        }
+        speakStreaming(stripMarkdown(cleaned));
+      }
+    });
+
+    const finalMsg: Anthropic.Message = await stream.finalMessage();
+    recordTokens(finalMsg.model, finalMsg.usage.input_tokens, finalMsg.usage.output_tokens);
+    console.log(`[Latency] total: +${Date.now() - t0}ms`);
+
+    // Flush any trailing fragment that never ended with sentence punctuation
+    if (textBuffer.trim()) {
+      speakStreaming(stripMarkdown(textBuffer.trim()));
+    }
+
+    // ── Tool-use fallback ─────────────────────────────────────────────────────
+    // If Claude issued tool calls, cancel queued streamed speech and resolve
+    // tools first — then get the final spoken reply non-streaming.
+    if (finalMsg.stop_reason === 'tool_use') {
+      resetSpeakQueue();
+      lastSendDidStream = false;
+
+      history.push({ role: 'assistant', content: finalMsg.content });
+
+      const toolUseBlocks = finalMsg.content.filter(
+        (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+      );
+      const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
+        toolUseBlocks.map(async (block) => {
+          const result = await executeTool(block.name, block.input as Record<string, string>);
+          console.log(`[Tool] ${block.name} → ${result}`);
+          return { type: 'tool_result' as const, tool_use_id: block.id, content: result };
+        }),
+      );
+      history.push({ role: 'user', content: toolResults });
+      trimHistory();
+
+      let toolResponse = await callWithRetry(() => client.messages.create({
+        model:      SONNET_MODEL,
+        max_tokens: 400,
+        tools:      TOOLS,
+        system:     systemPrompt,
+        messages:   history,
+      }));
+      recordTokens(toolResponse.model, toolResponse.usage.input_tokens, toolResponse.usage.output_tokens);
+
+      while (toolResponse.stop_reason === 'tool_use') {
+        const moreBlocks = toolResponse.content.filter(
+          (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+        );
+        history.push({ role: 'assistant', content: toolResponse.content });
+        const moreResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
+          moreBlocks.map(async (block) => {
+            const result = await executeTool(block.name, block.input as Record<string, string>);
+            console.log(`[Tool] ${block.name} → ${result}`);
+            return { type: 'tool_result' as const, tool_use_id: block.id, content: result };
+          }),
+        );
+        history.push({ role: 'user', content: moreResults });
+        trimHistory();
+        toolResponse = await callWithRetry(() => client.messages.create({
+          model:      SONNET_MODEL,
+          max_tokens: 400,
+          tools:      TOOLS,
+          system:     systemPrompt,
+          messages:   history,
+        }));
+        recordTokens(toolResponse.model, toolResponse.usage.input_tokens, toolResponse.usage.output_tokens);
+      }
+
+      const toolTextBlock = toolResponse.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+      const toolReply     = toolTextBlock?.text.trim() ?? 'Done.';
+      history.push({ role: 'assistant', content: toolReply });
+      trimHistory();
+      return toolReply;
+    }
+
+    // Normal streaming completion — extract reply text for history/echo detection
+    const streamTextBlock = finalMsg.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+    const streamReply     = streamTextBlock?.text.trim() ?? 'Done.';
+    history.push({ role: 'assistant', content: streamReply });
+    trimHistory();
+    return streamReply;
+  }
+
+  // ── Moderate → Haiku (non-streaming) ─────────────────────────────────────
+  lastSendDidStream = false;
+
   let response = await callWithRetry(() => client.messages.create({
     model,
     max_tokens:  maxFirstTok,
     tools:       TOOLS,
-    // When no goals are saved, force Claude to use a tool — prevents it from
-    // saying "Done" as plain text without actually calling goal_add.
+    // When no goals are saved, force Claude to use a tool.
     tool_choice: !hasGoals() ? { type: 'any' as const } : { type: 'auto' as const },
     system:      systemPrompt,
     messages:    history,
@@ -546,35 +689,20 @@ async function sendMessage(userText: string): Promise<string> {
   recordTokens(response.model, response.usage.input_tokens, response.usage.output_tokens);
 
   // ── Tool-use loop ──────────────────────────────────────────────────────────
-  // Claude can chain multiple tool calls; we resolve each one before continuing.
   while (response.stop_reason === 'tool_use') {
     const toolUseBlocks = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
     );
-
-    // Add Claude's tool-use turn to history
     history.push({ role: 'assistant', content: response.content });
-
-    // Execute every tool Claude requested and collect results
     const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
       toolUseBlocks.map(async (block) => {
-        const result = await executeTool(
-          block.name,
-          block.input as Record<string, string>,
-        );
+        const result = await executeTool(block.name, block.input as Record<string, string>);
         console.log(`[Tool] ${block.name} → ${result}`);
-        return {
-          type:        'tool_result' as const,
-          tool_use_id: block.id,
-          content:     result,
-        };
+        return { type: 'tool_result' as const, tool_use_id: block.id, content: result };
       }),
     );
-
-    // Feed results back to Claude so it can compose a spoken reply
     history.push({ role: 'user', content: toolResults });
     trimHistory();
-
     response = await callWithRetry(() => client.messages.create({
       model,
       max_tokens: 400,
@@ -587,11 +715,9 @@ async function sendMessage(userText: string): Promise<string> {
 
   // ── Extract the final spoken reply ────────────────────────────────────────
   const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
-  const reply     = textBlock?.text.trim() ?? "Done.";
-
+  const reply     = textBlock?.text.trim() ?? 'Done.';
   history.push({ role: 'assistant', content: reply });
   trimHistory();
-
   return reply;
 }
 
@@ -770,11 +896,16 @@ export async function triggerConversation(): Promise<void> {
         extractAndSaveFacts(sessionExchanges.slice(-3)).catch(() => {});
       }
 
-      await speak(spokenResponse);
-
-      // Belt-and-suspenders: poll until the flag drops
-      while (isSpeaking) {
-        await new Promise(r => setTimeout(r, 100));
+      if (lastSendDidStream) {
+        // TTS was already queued sentence-by-sentence during sendMessage.
+        // Wait for the full queue to drain before the next listen window opens.
+        await waitForSpeakQueue();
+      } else {
+        await speak(spokenResponse);
+        // Belt-and-suspenders: poll until the flag drops
+        while (isSpeaking) {
+          await new Promise(r => setTimeout(r, 100));
+        }
       }
 
       // 200 ms gap

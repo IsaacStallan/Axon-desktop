@@ -47,6 +47,48 @@ export function interruptSpeech(): string | null {
   return wasSaying;
 }
 
+// ── Streaming TTS queue ───────────────────────────────────────────────────────
+// Sentences generated from Claude streaming are enqueued here and played
+// sequentially. Non-blocking from the caller's perspective.
+
+let speakQueue: Promise<void> = Promise.resolve();
+
+/**
+ * Enqueue a text segment for immediate TTS. Returns immediately; audio plays
+ * in the background via the shared promise chain so segments never overlap.
+ */
+export function speakStreaming(text: string): void {
+  if (!text.trim()) return;
+  speakQueue = speakQueue
+    .then(async () => {
+      if (speakInterrupted) return;
+      const sanitised = sanitiseForTTS(text);
+      if (!sanitised.trim()) return;
+      // Flip orb state on the first chunk of a streaming response
+      if (!isSpeaking) {
+        isSpeaking = true;
+        orbWin?.webContents.send('orb:state', 'speaking');
+      }
+      await speakChunk(sanitised);
+    })
+    .catch(e => {
+      if (!speakInterrupted) console.warn('[ElevenLabs] speakStreaming error:', e);
+    });
+}
+
+/** Resolves when all currently-queued speech has finished playing, then resets isSpeaking. */
+export function waitForSpeakQueue(): Promise<void> {
+  return speakQueue.then(() => { isSpeaking = false; });
+}
+
+/**
+ * Clear the queue and reset isSpeaking immediately.
+ * Call this on interrupt so pending sentences don't play after the kill.
+ */
+export function resetSpeakQueue(): void {
+  speakQueue = Promise.resolve();
+}
+
 // Build a minimal 44-byte WAV header for 16-bit mono PCM
 function buildWavHeader(dataByteLength: number): Buffer {
   const h = Buffer.alloc(44);
