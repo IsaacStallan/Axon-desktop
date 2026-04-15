@@ -15,6 +15,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as dotenv from 'dotenv';
+import { autoUpdater } from 'electron-updater';
 dotenv.config();
 
 const execAsync = promisify(exec);
@@ -69,9 +70,10 @@ if (!gotLock) {
 }
 
 // ── Globals ─────────────────────────────────────────────────────────────────
-let orbWindow: BrowserWindow | null = null;
-let tray: Tray | null = null;
+let orbWindow:   BrowserWindow | null = null;
+let tray:        Tray | null = null;
 let isConversing = false;
+let updateReady  = false;
 
 declare const ORB_WINDOW_WEBPACK_ENTRY: string;
 declare const ORB_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -121,14 +123,18 @@ function createOrbWindow(): BrowserWindow {
 
 // ── System tray ─────────────────────────────────────────────────────────────
 
-function buildTrayMenu(): void {
+function buildTrayMenu(showUpdate = updateReady): void {
   const muted = (isMuted as () => boolean)();
   const menu  = Menu.buildFromTemplate([
+    ...(showUpdate ? [{
+      label: 'Restart to Update',
+      click: () => autoUpdater.quitAndInstall(),
+    }, { type: 'separator' as const }] : []),
     {
       label: 'Open Dashboard',
       click: () => { orbWindow?.show(); orbWindow?.focus(); },
     },
-    { type: 'separator' },
+    { type: 'separator' as const },
     {
       label: 'Snooze Interventions',
       submenu: [
@@ -141,7 +147,7 @@ function buildTrayMenu(): void {
       label: muted ? 'Unmute' : 'Mute',
       click: () => { (toggleMute as () => void)(); buildTrayMenu(); },
     },
-    { type: 'separator' },
+    { type: 'separator' as const },
     {
       label: 'Quit Axon',
       click: () => { orbWindow?.removeAllListeners('close'); app.quit(); },
@@ -483,3 +489,29 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
 });
+
+// ── Auto-updater (production only) ───────────────────────────────────────────
+// Only runs when the app is packaged — skipped during `npm start`.
+
+if (app.isPackaged) {
+  autoUpdater.checkForUpdatesAndNotify();
+
+  // Poll every 4 hours
+  setInterval(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 4 * 60 * 60 * 1000);
+
+  autoUpdater.on('update-available', () => {
+    tray?.setToolTip('Axon — Update downloading...');
+    console.log('[Updater] update available — downloading');
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    updateReady = true;
+    tray?.setToolTip('Axon — Update ready');
+    console.log('[Updater] update downloaded — will install on next restart');
+    buildTrayMenu(true);
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[Updater] error:', err);
+  });
+}

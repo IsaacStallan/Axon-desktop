@@ -11,6 +11,19 @@ module.exports = {
     },
   },
   rebuildConfig: {},
+  publishers: [
+    {
+      name: '@electron-forge/publisher-github',
+      config: {
+        repository: {
+          owner: 'IsaacStallan',
+          name:  'Axon-desktop',
+        },
+        prerelease: false,
+        draft:      false,
+      },
+    },
+  ],
   makers: [
     {
       name: '@electron-forge/maker-squirrel',

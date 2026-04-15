@@ -6,7 +6,16 @@
   "scripts": {
     "start": "electron-forge start",
     "build": "electron-forge make",
-    "package": "electron-forge package"
+    "make": "electron-forge make",
+    "package": "electron-forge package",
+    "publish": "electron-forge publish"
+  },
+  "build": {
+    "publish": {
+      "provider": "github",
+      "owner": "IsaacStallan",
+      "repo": "Axon-desktop"
+    }
   },
   "keywords": [],
   "author": "Isaac",
@@ -17,6 +26,7 @@
     "@supabase/supabase-js": "^2.49.4",
     "axios": "^1.9.0",
     "dotenv": "^16.5.0",
+    "electron-updater": "^6.8.3",
     "elevenlabs": "^1.57.0",
     "openai": "^6.32.0",
     "play-sound": "^1.1.6",
@@ -28,6 +38,7 @@
     "@electron-forge/maker-zip": "^7.8.0",
     "@electron-forge/plugin-auto-unpack-natives": "^7.8.0",
     "@electron-forge/plugin-webpack": "^7.8.0",
+    "@electron-forge/publisher-github": "^7.11.1",
     "@types/node": "^22.15.3",
     "@types/play-sound": "^1.1.2",
     "@typescript-eslint/eslint-plugin": "^5.0.0",
