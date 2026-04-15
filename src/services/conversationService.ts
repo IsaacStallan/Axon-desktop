@@ -184,6 +184,39 @@ function getTimeOfDay(): string {
   return 'night';
 }
 
+// ── Response type + listening window ──────────────────────────────────────────
+
+export type ResponseType = 'question' | 'statement' | 'closing';
+
+let lastResponseType: ResponseType = 'statement';
+
+/**
+ * Override the response type externally (e.g. voiceListener resetting on wake).
+ * Also consumed by the conversation loop to choose the next listening window.
+ */
+export function setLastResponseType(type: ResponseType): void {
+  lastResponseType = type;
+}
+
+const CLOSING_PHRASES = [
+  'let me know if', 'good luck', 'talk soon', 'got it', 'done', 'sorted',
+];
+
+function classifyResponse(text: string): ResponseType {
+  const lower = text.toLowerCase().trim();
+  if (CLOSING_PHRASES.some(p => lower.includes(p))) return 'closing';
+  if (lower.endsWith('?')) return 'question';
+  return 'statement';
+}
+
+function getListenWindowSecs(): number {
+  switch (lastResponseType) {
+    case 'question': return 8;
+    case 'closing':  return 0;
+    default:         return 4;
+  }
+}
+
 // ── Model constants ────────────────────────────────────────────────────────────
 
 const SONNET_MODEL = 'claude-sonnet-4-6';
@@ -584,8 +617,9 @@ export async function triggerConversation(): Promise<void> {
 
   // Reset per-session buffers
   sessionExchanges.splice(0, sessionExchanges.length);
-  turnCount    = 0;
-  sessionFacts = null; // will be populated on first buildSystemPrompt call
+  turnCount         = 0;
+  sessionFacts      = null; // will be populated on first buildSystemPrompt call
+  lastResponseType  = 'statement'; // reset so first listen uses full window
 
   // ── Pre-flight: seed goals from memory if none saved ───────────────────────
   if (!hasGoals()) {
@@ -594,10 +628,20 @@ export async function triggerConversation(): Promise<void> {
 
   console.log('[Conversation] loop started');
 
+  // First turn listens for the full 30 s (user hasn't spoken yet).
+  // Subsequent turns use a window derived from Axon's last response type.
+  let nextListenSecs = 30;
+
   while (conversationActive) {
+    // Closing response → return to idle without listening for more input
+    if (nextListenSecs === 0) {
+      console.log('[Conversation] closing response — returning to idle');
+      break;
+    }
+
     orbWin?.webContents.send('orb:state', 'listening');
-    console.log('[Conversation] listening...');
-    const transcript = await transcribeWithTimeout(30);
+    console.log(`[Conversation] listening (${nextListenSecs}s window)...`);
+    const transcript = await transcribeWithTimeout(nextListenSecs);
     console.log('[Conversation] transcript:', transcript);
 
     if (!conversationActive) break;
@@ -641,6 +685,12 @@ export async function triggerConversation(): Promise<void> {
       console.log('[Conversation] → Claude:', transcript);
       const response = await sendMessage(transcript);
       console.log('[Conversation] ← Claude:', response);
+
+      // Classify response → sets the listening window for the next turn
+      const respType = classifyResponse(response);
+      setLastResponseType(respType);
+      nextListenSecs = getListenWindowSecs();
+      console.log(`[Conversation] response type: ${respType} → next listen: ${nextListenSecs}s`);
 
       // Strip markdown before speaking
       const spokenResponse = stripMarkdown(response);

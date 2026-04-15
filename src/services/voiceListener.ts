@@ -75,6 +75,44 @@ function extractCommandAfterWakeWord(transcript: string): string {
   return '';
 }
 
+// ── Directed speech confidence scoring ───────────────────────────────────────
+
+const QUESTION_WORDS = /\b(what|how|when|where|why|can|could|should|will|do|is|are)\b/i;
+const COMMAND_VERBS  = /\b(play|open|search|tell|show|find|help|stop|set)\b/i;
+const HALLUCINATION_PATTERNS = [
+  'thank you', 'thanks', 'bye bye', 'goodbye', 'see you',
+  "you're welcome", 'welcome back', 'have a great day',
+];
+
+/**
+ * Returns a confidence score [0–1] that the transcript is genuine directed
+ * speech intended for Axon, not accidental noise or a hallucination.
+ *
+ * Scoring:
+ *   +0.3  contains a question word
+ *   +0.3  contains a direct command verb
+ *   +0.2  transcript is over 4 words
+ *   +0.2  contains "axon" or the custom wake word
+ *   -0.4  under 3 words total
+ *   -0.8  matches a known hallucination pattern
+ */
+function scoreDirectedSpeech(transcript: string): number {
+  const lower     = transcript.toLowerCase();
+  const wordCount = transcript.trim().split(/\s+/).filter(Boolean).length;
+  let   score     = 0;
+
+  if (QUESTION_WORDS.test(lower))                              score += 0.3;
+  if (COMMAND_VERBS.test(lower))                               score += 0.3;
+  if (wordCount > 4)                                           score += 0.2;
+  if (lower.includes('axon') || (customWakeWord && lower.includes(customWakeWord))) score += 0.2;
+  if (wordCount < 3)                                           score -= 0.4;
+  if (HALLUCINATION_PATTERNS.some(p => lower.includes(p)))    score -= 0.8;
+
+  return Math.max(0, Math.min(1, score));
+}
+
+const CONFIDENCE_THRESHOLD = 0.6;
+
 // ── Sleep-word detection ──────────────────────────────────────────────────────
 
 const SLEEP_WORDS = [
@@ -295,17 +333,23 @@ function runMacSession(onWakeWord: () => void, gen: number): Promise<void> {
           stopFlag = true;
           settle(() => resolve());
         } else if (!stopFlag && gen === sessionGen && isWakeWord(transcript)) {
-          console.log('[VoiceListener] WAKE WORD DETECTED:', transcript);
+          const confidence = scoreDirectedSpeech(transcript);
+          const decision   = confidence >= CONFIDENCE_THRESHOLD ? 'triggered' : 'ignored';
+          console.log(`[VoiceListener] directed speech confidence: ${confidence.toFixed(2)} — ${decision} (${transcript})`);
 
-          const command = extractCommandAfterWakeWord(transcript);
-          if (command.length > 3) {
-            console.log('[VoiceListener] queuing post-wake command:', command);
-            setPendingUtterance(command);
+          if (confidence >= CONFIDENCE_THRESHOLD) {
+            console.log('[VoiceListener] WAKE WORD DETECTED:', transcript);
+
+            const command = extractCommandAfterWakeWord(transcript);
+            if (command.length > 3) {
+              console.log('[VoiceListener] queuing post-wake command:', command);
+              setPendingUtterance(command);
+            }
+
+            stopFlag = true;
+            onWakeWord();
+            settle(() => resolve());
           }
-
-          stopFlag = true;
-          onWakeWord();
-          settle(() => resolve());
         }
       } catch (e) {
         console.warn('[VoiceListener] transcription error:', e);
@@ -347,17 +391,23 @@ async function runWindowsSession(onWakeWord: () => void): Promise<void> {
     }
 
     if (isWakeWord(transcript)) {
-      console.log('[VoiceListener] WAKE WORD DETECTED:', transcript);
+      const confidence = scoreDirectedSpeech(transcript);
+      const decision   = confidence >= CONFIDENCE_THRESHOLD ? 'triggered' : 'ignored';
+      console.log(`[VoiceListener] directed speech confidence: ${confidence.toFixed(2)} — ${decision} (${transcript})`);
 
-      const command = extractCommandAfterWakeWord(transcript);
-      if (command.length > 3) {
-        console.log('[VoiceListener] queuing post-wake command:', command);
-        setPendingUtterance(command);
+      if (confidence >= CONFIDENCE_THRESHOLD) {
+        console.log('[VoiceListener] WAKE WORD DETECTED:', transcript);
+
+        const command = extractCommandAfterWakeWord(transcript);
+        if (command.length > 3) {
+          console.log('[VoiceListener] queuing post-wake command:', command);
+          setPendingUtterance(command);
+        }
+
+        stopFlag = true;
+        onWakeWord();
+        return;
       }
-
-      stopFlag = true;
-      onWakeWord();
-      return;
     }
   }
 }
