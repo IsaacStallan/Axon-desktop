@@ -14,7 +14,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 
-const SOX_PATH = process.env.SOX_PATH ?? 'C:\\Program Files (x86)\\sox-14-4-2\\sox.exe';
+const SOX_PATH     = process.env.SOX_PATH ?? (process.platform === 'darwin' ? 'sox' : 'C:\\Program Files (x86)\\sox-14-4-2\\sox.exe');
 
 const RECORD_SECS = 3;
 
@@ -29,7 +29,7 @@ function recordSilence(outPath: string): Promise<void> {
     const proc = spawn(
       SOX_PATH,
       [
-        '-t', 'waveaudio', 'default',
+        '-d',
         '-r', '16000', '-c', '1', '-b', '16',
         outPath,
         'trim', '0', String(RECORD_SECS),

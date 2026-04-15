@@ -2,6 +2,9 @@ const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
+  // 'source-map' externalises source maps to .map files instead of using
+  // eval(), so the renderer runs cleanly under a strict Content-Security-Policy.
+  devtool: 'source-map',
   module: {
     rules: [
       {
@@ -18,5 +21,5 @@ module.exports = {
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },
-  target: 'electron-renderer',
+  target: 'web',
 };

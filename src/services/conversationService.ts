@@ -244,22 +244,79 @@ export function setLastResponseType(type: ResponseType): void {
   lastResponseType = type;
 }
 
-const CLOSING_PHRASES = [
-  'let me know if', 'good luck', 'talk soon', 'got it', 'done', 'sorted',
+const TRUE_CLOSING_PHRASES = [
+  'talk to you later',
+  'speak later',
+  'goodbye',
+  'bye',
+  'see you later',
+  'i’ll leave you to it',
+  'i will leave you to it',
+  'going back to idle',
+  'returning to idle',
 ];
 
 function classifyResponse(text: string): ResponseType {
   const lower = text.toLowerCase().trim();
-  if (CLOSING_PHRASES.some(p => lower.includes(p))) return 'closing';
+
+  // Actual question always keeps the loop alive
   if (lower.endsWith('?')) return 'question';
+
+  // If the assistant is explicitly offering the next action,
+  // do NOT close, even if it says "done" somewhere.
+  if (
+    lower.includes('want me to') ||
+    lower.includes('do you want me to') ||
+    lower.includes('should i') ||
+    lower.includes('what do you want') ||
+    lower.includes('what file') ||
+    lower.includes('where is') ||
+    lower.includes('or just') ||
+    lower.includes('or do you want')
+  ) {
+    return 'question';
+  }
+
+  // Only treat as closing if it sounds explicitly terminal
+  if (TRUE_CLOSING_PHRASES.some(p => lower.includes(p))) {
+    return 'closing';
+  }
+
   return 'statement';
+}
+
+function shouldKeepConversationAlive(response: string, transcript: string): boolean {
+  const r = response.toLowerCase();
+  const t = transcript.toLowerCase();
+
+  // User is clearly mid-task
+  if (
+    t.includes('open') ||
+    t.includes('drag') ||
+    t.includes('show') ||
+    t.includes('pull up') ||
+    t.includes('look at') ||
+    t.includes('help')
+  ) return true;
+
+  // Assistant is handing control back
+  if (
+    r.includes('want me to') ||
+    r.includes('should i') ||
+    r.includes('what file') ||
+    r.includes('where is') ||
+    r.includes('or just') ||
+    r.includes('what do you need')
+  ) return true;
+
+  return false;
 }
 
 function getListenWindowSecs(): number {
   switch (lastResponseType) {
-    case 'question': return 8;
+    case 'question': return 20;
     case 'closing':  return 0;
-    default:         return 4;
+    default:         return 12;
   }
 }
 
@@ -817,8 +874,19 @@ export async function triggerConversation(): Promise<void> {
   while (conversationActive) {
     // Closing response → return to idle without listening for more input
     if (nextListenSecs === 0) {
-      console.log('[Conversation] closing response — returning to idle');
-      break;
+      console.log('[Conversation] closing response — entering linger window');
+      orbWin?.webContents.send('orb:state', 'listening');
+      const lingerTranscript = await transcribeWithTimeout(6);
+
+      if (lingerTranscript.trim() && !isJunk(lingerTranscript) && !isEcho(lingerTranscript)) {
+        console.log('[Conversation] linger follow-up detected, resuming:', lingerTranscript);
+        nextListenSecs = 20;
+        // process it on next loop iteration
+        history.push({ role: 'user', content: lingerTranscript });
+      } else {
+        console.log('[Conversation] no linger follow-up — returning to idle');
+        break;
+      }
     }
 
     orbWin?.webContents.send('orb:state', 'listening');
@@ -831,7 +899,7 @@ export async function triggerConversation(): Promise<void> {
     if (!transcript.trim()) {
       silenceStreak++;
       if (silenceStreak >= 4) {
-        console.log('[Conversation] 2-min silence — ending');
+        console.log(`[Conversation] silence streak ${silenceStreak} — ending`);
         break;
       }
       continue;
@@ -869,11 +937,17 @@ export async function triggerConversation(): Promise<void> {
       console.log('[Conversation] ← Claude:', response);
 
       // Classify response → sets the listening window for the next turn
-      const respType = classifyResponse(response);
+      let respType = classifyResponse(response);
+
+      // 🔥 THIS is where your helper lives
+      if (respType === 'closing' && shouldKeepConversationAlive(response, transcript)) {
+        console.log('[Conversation] overriding closing -> question (active task flow)');
+        respType = 'question';
+      }
+
       setLastResponseType(respType);
       nextListenSecs = getListenWindowSecs();
       console.log(`[Conversation] response type: ${respType} → next listen: ${nextListenSecs}s`);
-
       // Strip markdown before speaking
       const spokenResponse = stripMarkdown(response);
       lastAxonResponse     = spokenResponse;

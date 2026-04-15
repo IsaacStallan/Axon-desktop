@@ -5,6 +5,10 @@ module.exports = {
   packagerConfig: {
     asar: true,
     icon: './assets/icon',
+    extendInfo: {
+      NSMicrophoneUsageDescription: 'Axon needs microphone access to listen for your voice.',
+      NSCalendarsUsageDescription:  'Axon needs calendar access to give you daily briefings and event reminders.',
+    },
   },
   rebuildConfig: {},
   makers: [
