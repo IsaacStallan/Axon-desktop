@@ -16,7 +16,7 @@ import { killCurrentRecording } from './whisperService';
 import { getPendingTasksText } from './taskStore';
 import { getGoalsText, hasGoals, addGoal, type Goal } from './goalService';
 import { getOpenCommitmentsText, extractCommitmentsFromSession, detectCompletionsFromTranscript } from './commitmentTracker';
-import { isSleepWord } from './voiceListener';
+import { isSleepWord, stopVoiceListener } from './voiceListener';
 import { formatProactiveContext } from './proactiveContext';
 import { getCurrentScreenSummary } from './screenAwareness';
 import { getPersonality, getEmotionPromptFragment } from './emotionEngine';
@@ -33,17 +33,43 @@ export function setOrbWindow(win: BrowserWindow): void { orbWin = win; }
 let pendingInterruptContext: string | null = null;
 
 /**
- * Stop current TTS playback and save what was being said.
- * Called from main.ts IPC handler and the Cmd+Shift+I hotkey.
+ * Stop current TTS playback and immediately enter listening mode.
+ * Called from main.ts IPC handler (UI button) and Cmd+Shift+I hotkey.
+ *
+ * Sequence:
+ *   1. interruptSpeech()      — kills the audio player immediately
+ *   2. Save interrupted text  — injected into next system prompt as context
+ *   3. orb → 'listening'     — UI feedback before anything else
+ *   4a. If already in a conversation loop: the loop resumes naturally after
+ *       speak() returns — no need to restart it.
+ *   4b. If outside a conversation (e.g. proactive message): stop the wake-word
+ *       listener and start a fresh conversation loop.
  */
 export function handleInterrupt(): void {
+  console.log('[Interrupt] stopping speech → starting listen');
+
   const wasSaying = interruptSpeech();
   if (wasSaying) {
     pendingInterruptContext = wasSaying;
     console.log('[Conversation] interrupted mid-speech — context saved');
   }
-  // Immediately flip the orb to listening so the user knows we heard them
+
+  // Flip orb state immediately so the user gets visual feedback
   orbWin?.webContents.send('orb:state', 'listening');
+
+  if (conversationActive) {
+    // We're inside a live conversation loop — speak() just returned early,
+    // the loop's next iteration will call transcribeWithTimeout automatically.
+    // Nothing more to do here.
+    return;
+  }
+
+  // Axon was speaking outside a conversation (proactive/briefing message).
+  // Kill the wake-word listener, then start a fresh conversation loop.
+  stopVoiceListener();
+  triggerConversation().catch(e =>
+    console.warn('[Conversation] interrupt-triggered conversation error:', e),
+  );
 }
 
 const client = new Anthropic({

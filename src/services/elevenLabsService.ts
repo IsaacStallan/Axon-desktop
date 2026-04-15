@@ -179,6 +179,7 @@ async function speakChunk(text: string): Promise<void> {
     const stderrBuf: Buffer[] = [];
     player.stderr?.on('data', (b: Buffer) => stderrBuf.push(b));
     player.on('close', () => {
+      if (speakInterrupted) return; // suppress noise from intentional kill
       const msg = Buffer.concat(stderrBuf).toString().trim();
       if (msg) console.warn('[ElevenLabs] player stderr:', msg);
     });
