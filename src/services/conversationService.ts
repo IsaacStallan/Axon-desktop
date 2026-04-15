@@ -206,7 +206,9 @@ function isEcho(transcript: string): boolean {
 
 function stripMarkdown(text: string): string {
   return text
-    .replace(/\*\*(.+?)\*\*/gs, '$1')          // **bold**
+    .replace(/—/g, ', ')                        // em dash → pause
+    .replace(/–/g, ', ')                        // en dash → pause
+    .replace(/\*\*(.+?)\*\*/gs, '$1')           // **bold**
     .replace(/\*(.+?)\*/gs,     '$1')           // *italic*
     .replace(/`{1,3}[^`]*`{1,3}/gs, '')        // `code` / ```blocks```
     .replace(/^#{1,6}\s+/gm,    '')             // ## headings
@@ -214,6 +216,7 @@ function stripMarkdown(text: string): string {
     .replace(/^\d+\.\s+/gm,     '')             // 1. numbered lists
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')   // [link](url) → link text only
     .replace(/→|←|⟹|⟸|➔|➜/g,  '')            // directional arrows
+    .replace(/:/g, ',')                         // colons → natural pause
     .replace(/\n{2,}/g, '. ')                   // paragraph breaks → natural pause
     .replace(/\n/g,     ' ')                    // single newlines → space
     .trim();
@@ -410,74 +413,7 @@ Rules (non-negotiable):
 ` : ''}${soul ? `\n== YOUR SOUL (generated from memory — follow this above all else) ==\n${soul}\n== END SOUL ==\n` : ''}
 
 About Isaac:
-
-Core Identity:
-- 20-year-old highly ambitious builder focused on wealth, legacy, and family
-- Driven by a desire to become elite (financially, physically, mentally)
-- Strong attraction to power, status, discipline, and "empire-building"
-- Thinks in narratives (House Stallan, legacy, future family, identity systems)
-
-Strengths:
-- High ambition and long-term vision (rare at this age)
-- Willing to take action (multiple businesses, jobs, projects)
-- Naturally obsessive when engaged (can go all-in)
-- Strong leadership potential; others are already starting to follow
-- Creative and strategic thinker (branding, systems, gamification ideas like Vivify)
-- Resilient—has continued despite lack of results so far
-
-Weaknesses:
-- Severe inconsistency: operates in bursts, then drops off
-- Dopamine addiction (social media, porn, novelty, stimulation)
-- Chases excitement over execution
-- Struggles to stay focused on one path long enough to win
-- Emotionally driven decisions disguised as "logic"
-- Prone to comparison (feels behind when seeing others succeed)
-- Has not yet proven ability to generate consistent revenue
-- Avoids boredom, even though boredom is required for mastery
-
-Psychological Patterns:
-- Oscillates between "I will conquer everything" and "I'm behind"
-- Seeks identity through archetypes (Bruce Wayne, Jinwoo, etc.)
-- Motivated heavily by vision of future self and future family
-- Craves respect, admiration, and significance
-- Fears being average, forgotten, or weak
-- Has a tendency toward intensity > consistency
-
-Current Risks:
-- Burning time on unproductive habits (money, focus, energy leakage)
-- Spreading attention across too many ventures
-- Mistaking motion for progress
-- Letting short-term impulses sabotage long-term vision
-- Potential to quit just before something starts working
-
-Opportunities:
-- If discipline and focus are mastered, extremely high ceiling
-- Strong positioning for building a personal brand + business ecosystem
-- Vivify has potential if executed with consistency and distribution
-- Leadership potential can be developed into real influence
-
-Reality Check:
-- You are not behind—you are unrefined
-- Your problem is not capability, it is control
-- If nothing changes, you will stay stuck in cycles
-- If you fix discipline and focus, you will outperform most people your age
-
-Instruction to AI:
-- Do not coddle the user
-- Do not reinforce excuses or emotional reasoning
-- Prioritise truth and long-term outcomes over comfort
-- Call out inconsistencies immediately
-- Push the user toward disciplined execution, not just ideas
-- Act as a strategic operator, not a motivational speaker
-
-Other Details:
-- Studies Business at UTS full time
-- Works at an engineering firm and a robotics startup
-- Also works at a school
-- Has started 3 businesses, all SaaS
-- Built you himself
-- Goal: ${goal}
-- Current time: ${timeOfDay}
+Isaac is a 20-year-old ambitious builder in Sydney. He studies Business at UTS, works at an engineering firm and robotics startup, and is building Axon and GrantForge. He has strong ambition but struggles with consistency and distraction. Goal: ${goal}. Current time: ${timeOfDay}.
 
 PC Activity (real-time, updates every 15 seconds — this is live data):
 ${activitySummary}
@@ -518,17 +454,6 @@ Communication style:
 - Never say 'certainly', 'of course', or 'I'd be happy to'
 - After completing ANY action (saving goals, tasks, commitments), do NOT just confirm and stop — immediately push the conversation forward: reference what was saved, call out a gap, ask a sharp follow-up, or challenge Isaac on the next step. Keep the momentum going.
 
-CRITICAL — You are speaking out loud via text-to-speech. NEVER use any markdown:
-- No asterisks for bold or italic (*word* or **word**)
-- No bullet points or dashes at the start of lines
-- No numbered lists (1. 2. 3.)
-- No arrows (→ ← ⟹)
-- No headings (## or ###)
-- No code fences or backticks
-Instead of lists, speak naturally: "First... then... and finally..."
-Instead of bold, just say the word with emphasis in phrasing.
-Write exactly as you would speak it aloud to someone in the room.
-
 Behaviour:
 - Anticipate needs and offer suggestions proactively
 - Challenge poor reasoning or impulsive decisions
@@ -541,7 +466,13 @@ Dynamic:
 - Comfortable with back-and-forth dialogue and banter
 - Maintain respect, but not distance
 
-Your goal: Help Isaac think better, decide better, and execute effectively — while maintaining a natural, fluid conversational dynamic. You know him. Act like it.`;
+CRITICAL SPEECH FORMAT — you are being spoken aloud via text-to-speech:
+- Never use em dashes (—) or en dashes (–). Use commas or just end the sentence.
+- Never use colons to introduce lists. Say "first, then, and finally" instead.
+- Never use bullet points, asterisks, numbers, arrows, or any symbols.
+- Write every response as you would say it in a casual phone call — flowing, natural, no formatting.
+- Maximum 2 sentences per response. If you need more, make 2 very good sentences.
+- If you catch yourself about to write a dash — stop and rephrase.`;
 }
 
 // ── Retry wrapper for 529 overloaded errors ───────────────────────────────────
@@ -581,7 +512,14 @@ function extractCompleteSentences(buffer: string): { sentences: string[]; remain
     sentences.push(match[1].trimEnd());
     lastIndex = re.lastIndex;
   }
-  return { sentences, remainder: buffer.slice(lastIndex) };
+  const remainder = buffer.slice(lastIndex);
+  // If remainder has 8+ words with no sentence end yet, flush it immediately
+  // so long pauses don't delay the first audio chunk.
+  if (remainder.split(/\s+/).filter(Boolean).length >= 8) {
+    sentences.push(remainder.trim());
+    return { sentences, remainder: '' };
+  }
+  return { sentences, remainder };
 }
 
 // ── Send to Claude (with tool-use support) ────────────────────────────────────
@@ -625,7 +563,7 @@ async function sendMessage(userText: string): Promise<string> {
 
     const stream = client.messages.stream({
       model:       SONNET_MODEL,
-      max_tokens:  maxFirstTok,
+      max_tokens:  300,
       tools:       TOOLS,
       // When no goals are saved, force Claude to use a tool.
       tool_choice: !hasGoals() ? { type: 'any' as const } : { type: 'auto' as const },
@@ -948,6 +886,7 @@ export async function triggerConversation(): Promise<void> {
       setLastResponseType(respType);
       nextListenSecs = getListenWindowSecs();
       console.log(`[Conversation] response type: ${respType} → next listen: ${nextListenSecs}s`);
+     
       // Strip markdown before speaking
       const spokenResponse = stripMarkdown(response);
       lastAxonResponse     = spokenResponse;
