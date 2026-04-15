@@ -26,7 +26,8 @@ const { getOpenCommitments } = require('./services/commitmentTracker');
 console.error('[Main] loading silentMonitor');
 const { startSilentMonitor } = require('./services/silentMonitor');
 console.error('[Main] loading decisionEngine');
-const { startDecisionLoop } = require('./services/decisionEngine');
+const { startDecisionLoop, snoozeInterventions } = require('./services/decisionEngine');
+const { toggleMute, isMuted } = require('./services/muteControl');
 console.error('[Main] loading voiceListener');
 const { startVoiceListener, stopVoiceListener, setOrbWindow } = require('./services/voiceListener');
 const { startScreenMonitor, setOrbWindow: setScreenOrbWindow } = require('./services/screenAwareness');
@@ -93,6 +94,7 @@ function createOrbWindow(): BrowserWindow {
     resizable:       true,
     movable:         true,
     hasShadow:       false,
+    show:            false,
     webPreferences: {
       preload:          ORB_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
@@ -118,41 +120,60 @@ function createOrbWindow(): BrowserWindow {
 }
 
 // ── System tray ─────────────────────────────────────────────────────────────
+
+function buildTrayMenu(): void {
+  const muted = (isMuted as () => boolean)();
+  const menu  = Menu.buildFromTemplate([
+    {
+      label: 'Open Dashboard',
+      click: () => { orbWindow?.show(); orbWindow?.focus(); },
+    },
+    { type: 'separator' },
+    {
+      label: 'Snooze Interventions',
+      submenu: [
+        { label: '30 minutes',  click: () => { (snoozeInterventions as (m: number) => void)(30); } },
+        { label: '2 hours',     click: () => { (snoozeInterventions as (m: number) => void)(120); } },
+        { label: 'Rest of day', click: () => { (snoozeInterventions as (m: number) => void)(999); } },
+      ],
+    },
+    {
+      label: muted ? 'Unmute' : 'Mute',
+      click: () => { (toggleMute as () => void)(); buildTrayMenu(); },
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit Axon',
+      click: () => { orbWindow?.removeAllListeners('close'); app.quit(); },
+    },
+  ]);
+  tray?.setContextMenu(menu);
+}
+
 function createTray(): Tray {
-  // 16x16 purple circle as tray icon (base64 PNG)
-  const icon = nativeImage.createEmpty();
-  const t = new Tray(icon);
+  const iconPath = path.join(__dirname, 'assets', 'tray-icon.png');
+  const icon     = nativeImage.createFromPath(iconPath);
+  const t        = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
 
   t.setToolTip('Axon');
-  t.setContextMenu(
-    Menu.buildFromTemplate([
-      {
-        label: 'Open Axon',
-        click: () => {
-          orbWindow?.show();
-          orbWindow?.focus();
-        },
-      },
-      { type: 'separator' },
-      {
-        label: 'Quit',
-        click: () => {
-          orbWindow?.removeAllListeners('close');
-          app.quit();
-        },
-      },
-    ])
-  );
+  tray = t;          // assign early so buildTrayMenu() can reference it
+  buildTrayMenu();
 
   t.on('click', () => {
     if (orbWindow?.isVisible()) {
       orbWindow.focus();
     } else {
       orbWindow?.show();
+      orbWindow?.focus();
     }
   });
 
   return t;
+}
+
+export function updateTrayState(label: string): void {
+  const muted = (isMuted as () => boolean)();
+  tray?.setToolTip(`Axon — ${label}${muted ? ' [muted]' : ''}`);
 }
 
 // ── Open apps (macOS only) ────────────────────────────────────────────────────
@@ -197,6 +218,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
 export function setOrbState(state: 'idle' | 'listening' | 'speaking' | 'thinking' | 'urgent'): void {
   orbWindow?.webContents.send('orb:state', state);
   orbWindow?.webContents.send('axon:activity', ACTIVITY_LABELS[state] ?? state);
+  updateTrayState(ACTIVITY_LABELS[state] ?? state);
 }
 
 // ── Stats payload for the Command Center UI ──────────────────────────────────
@@ -341,6 +363,7 @@ app.on('ready', () => {
   try {
     console.log('[Main] app ready');
     app.dock?.hide(); // macOS — no dock icon
+    app.setLoginItemSettings({ openAtLogin: true });
 
     // ── Monitor-only mode ──────────────────────────────────────────────────
     // DEVICE_ROLE=monitor: run windowMonitor + Supabase heartbeat only.

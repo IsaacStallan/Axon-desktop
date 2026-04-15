@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { EventEmitter } from 'events';
 import { getCurrentApp } from './windowMonitor';
 import { recordTokens, recordVision } from './costTracker';
+import { checkFeatureAccess } from './rateLimiter';
 
 console.log('[ScreenAwareness] module loaded');
 
@@ -230,6 +231,16 @@ async function pollScreen(): Promise<void> {
 }
 
 export function startScreenMonitor(intervalMs = 30_000): void {
+  void checkFeatureAccess('screenAwareness').then(allowed => {
+    if (!allowed) {
+      console.log('[ScreenAwareness] screen awareness disabled for this tier — monitor not started');
+      return;
+    }
+    _startScreenMonitorInner(intervalMs);
+  });
+}
+
+function _startScreenMonitorInner(intervalMs: number): void {
   if (monitorTimer) clearInterval(monitorTimer);
   console.log(`[ScreenAwareness] starting monitor (every ${intervalMs / 1000}s, vision gated)`);
   // First capture on next tick — gives Electron time to settle after startup

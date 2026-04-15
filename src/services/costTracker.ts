@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { readFileSync, writeFileSync } from 'fs';
 import path from 'path';
+import { recordAPIUsage } from './rateLimiter';
 
 // ── Pricing (per million tokens) ──────────────────────────────────────────────
 
@@ -100,6 +101,7 @@ export function recordTokens(
 
   const cost = (inputTokens * rate.input + outputTokens * rate.output) / 1_000_000;
   sessionCost += cost;
+  recordAPIUsage(cost);
 
   const store = loadStore();
   const rec   = getOrCreateToday(store);

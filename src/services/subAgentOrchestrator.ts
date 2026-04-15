@@ -6,6 +6,7 @@ import {
   browserOpen, browserSearch, browserClick, browserType,
   browserExtract, browserScroll, browserWait,
 } from './browserAgent';
+import { checkFeatureAccess } from './rateLimiter';
 
 console.log('[SubAgentOrchestrator] module loaded');
 
@@ -346,6 +347,9 @@ async function synthesiseResults(instruction: string, results: AgentResult[]): P
 // ── Public orchestration entry point ──────────────────────────────────────────
 
 export async function orchestrate(instruction: string): Promise<string> {
+  if (!(await checkFeatureAccess('subAgents'))) {
+    return 'Sub-agents are not available on your current plan. Upgrade to Pro or Enterprise to use this feature.';
+  }
   console.log('[SubAgent] orchestrating:', instruction.slice(0, 80));
 
   let tasks: SubTask[];

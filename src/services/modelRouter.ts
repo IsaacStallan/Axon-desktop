@@ -171,6 +171,93 @@ async function callOllama(system: string, prompt: string): Promise<string | null
   }
 }
 
+// ── Groq (llama-3.1-8b-instant — free tier, extremely fast) ──────────────────
+
+const GROQ_TIMEOUT = 10_000;
+
+async function callGroq(system: string, prompt: string): Promise<string | null> {
+  if (!process.env.GROQ_API_KEY) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), GROQ_TIMEOUT);
+
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method:  'POST',
+      headers: {
+        Authorization:  `Bearer ${process.env.GROQ_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model:       'llama-3.1-8b-instant',
+        messages:    [
+          { role: 'system', content: system },
+          { role: 'user',   content: prompt },
+        ],
+        max_tokens:  300,
+        temperature: 0.7,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      console.warn(`[ModelRouter] Groq HTTP ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const text = data.choices?.[0]?.message?.content?.trim();
+    return text || null;
+  } catch (e) {
+    console.warn('[ModelRouter] Groq unavailable:', (e as Error).message.slice(0, 60));
+    return null;
+  }
+}
+
+// ── Gemini Flash (Google — generous free tier) ────────────────────────────────
+
+const GEMINI_TIMEOUT = 12_000;
+
+async function callGeminiFlash(system: string, prompt: string): Promise<string | null> {
+  if (!process.env.GEMINI_API_KEY) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT);
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            { role: 'user', parts: [{ text: `${system}\n\nUser: ${prompt}` }] },
+          ],
+          generationConfig: { maxOutputTokens: 300, temperature: 0.7 },
+        }),
+        signal: controller.signal,
+      },
+    );
+
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      console.warn(`[ModelRouter] Gemini HTTP ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    return text || null;
+  } catch (e) {
+    console.warn('[ModelRouter] Gemini unavailable:', (e as Error).message.slice(0, 60));
+    return null;
+  }
+}
+
 // ── Anthropic (Tiers 2–4) ─────────────────────────────────────────────────────
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
@@ -196,13 +283,12 @@ async function callAnthropic(
 /**
  * Routes a generation request to the correct model tier.
  *
- * Tier 1 (Ollama llama3.2:3b):  simple_reminder — local, free, <1s
- * Tier 2 (Claude Haiku):         intervention, break_suggestion, pattern_analysis
- * Tier 3 (Claude Sonnet):        conversation, goal_analysis
- * Tier 4 (Claude Opus):          weekly_review
+ * Tier 1 (Ollama → Groq → Haiku): simple_reminder
+ * Tier 2 (Groq → Haiku):          intervention, break_suggestion, pattern_analysis
+ * Tier 3 (Claude Sonnet):          conversation, goal_analysis
+ * Tier 4 (Sonnet → Gemini Flash):  weekly_review
  *
- * If Ollama is unavailable, Tier 1 automatically falls back to Haiku.
- * Never throws — always returns a string.
+ * All fallbacks are silent — never crashes.
  */
 export async function route(opts: RouteOptions): Promise<string> {
   const { taskType, system, prompt, maxTokens = 120, requiresToolUse: needsTools = false } = opts;
@@ -219,32 +305,49 @@ export async function route(opts: RouteOptions): Promise<string> {
 
   if (tier === 'ollama') {
     const ollamaResult = await callOllama(system, prompt);
-    if (ollamaResult) {
-      callCounts.ollama++;
-      return ollamaResult;
-    }
-    // Fallback to Haiku — silent, automatic
-    console.log('[ModelRouter] Ollama → Haiku fallback');
+    if (ollamaResult) { callCounts.ollama++; return ollamaResult; }
+    const groqResult = await callGroq(system, prompt);
+    if (groqResult) { callCounts.haiku++; return groqResult; }
+    console.log('[ModelRouter] Ollama/Groq → Haiku fallback');
     callCounts.haiku++;
     return callAnthropic(ANTHROPIC_MODELS.haiku, system, prompt, maxTokens);
   }
 
-  if (tier === 'haiku')  callCounts.haiku++;
-  if (tier === 'sonnet') callCounts.sonnet++;
-  if (tier === 'opus')   callCounts.opus++;
+  if (tier === 'haiku') {
+    // Interventions: Groq first (free, fast) → Haiku fallback
+    const groqResult = await callGroq(system, prompt);
+    if (groqResult) { callCounts.haiku++; return groqResult; }
+    console.log(`[ModelRouter] ${taskType} → Groq unavailable, falling back to Haiku`);
+    callCounts.haiku++;
+    return callAnthropic(ANTHROPIC_MODELS.haiku, system, prompt, maxTokens);
+  }
 
-  return callAnthropic(ANTHROPIC_MODELS[tier], system, prompt, maxTokens);
+  if (tier === 'sonnet') {
+    callCounts.sonnet++;
+    return callAnthropic(ANTHROPIC_MODELS.sonnet, system, prompt, maxTokens);
+  }
+
+  // opus (weekly_review): Sonnet → Gemini Flash fallback (skip $75/M Opus)
+  callCounts.sonnet++;
+  try {
+    return await callAnthropic(ANTHROPIC_MODELS.sonnet, system, prompt, maxTokens);
+  } catch {
+    console.log('[ModelRouter] weekly_review → Sonnet failed, trying Gemini Flash');
+    const geminiResult = await callGeminiFlash(system, prompt);
+    if (geminiResult) return geminiResult;
+    throw new Error('[ModelRouter] weekly_review: all tiers failed');
+  }
 }
 
-// ── Conversation simple turn (Ollama → Haiku → Sonnet fallback chain) ─────────
+// ── Conversation turns: simple (Ollama → Groq → Haiku) ───────────────────────
 
 /**
- * Routes a simple conversation turn with a minimal system prompt.
- * Tries Ollama first (free, local), falls back to Haiku, then Sonnet.
+ * Routes a simple conversation turn.
+ * Tries Ollama first (free, local), then Groq (free, fast), then Haiku.
  * Never throws.
  */
 export async function routeSimple(system: string, userText: string): Promise<string> {
-  // Tool-use override: skip Ollama and Haiku entirely if tools are expected.
+  // Tool-use override: skip free tiers entirely if tools are expected.
   if (requiresToolUse(userText)) {
     console.log('[ModelRouter] simple → sonnet (tool-use override)');
     callCounts.sonnet++;
@@ -253,20 +356,46 @@ export async function routeSimple(system: string, userText: string): Promise<str
 
   // Try Ollama
   const ollamaResult = await callOllama(system, userText);
-  if (ollamaResult) {
-    callCounts.ollama++;
-    return ollamaResult;
-  }
+  if (ollamaResult) { callCounts.ollama++; return ollamaResult; }
+
+  // Fallback: Groq
+  const groqResult = await callGroq(system, userText);
+  if (groqResult) { callCounts.haiku++; return groqResult; }
 
   // Fallback: Haiku
-  console.log('[ModelRouter] simple → Ollama unavailable, falling back to Haiku');
+  console.log('[ModelRouter] simple → Ollama/Groq unavailable, falling back to Haiku');
   try {
     callCounts.haiku++;
     return await callAnthropic(ANTHROPIC_MODELS.haiku, system, userText, 100);
   } catch {
-    // Ultimate fallback: Sonnet
     console.log('[ModelRouter] simple → Haiku failed, falling back to Sonnet');
     callCounts.sonnet++;
     return await callAnthropic(ANTHROPIC_MODELS.sonnet, system, userText, 100);
   }
+}
+
+// ── Conversation turns: moderate (Groq → Gemini Flash → Haiku) ───────────────
+
+/**
+ * Routes a moderate-complexity conversation turn.
+ * Tries Groq first (free, fast), then Gemini Flash (free), then Haiku.
+ * Never throws.
+ */
+export async function routeModerate(system: string, userText: string, maxTokens = 200): Promise<string> {
+  if (requiresToolUse(userText)) {
+    console.log('[ModelRouter] moderate → sonnet (tool-use override)');
+    callCounts.sonnet++;
+    return callAnthropic(ANTHROPIC_MODELS.sonnet, system, userText, maxTokens);
+  }
+
+  const groqResult = await callGroq(system, userText);
+  if (groqResult) { callCounts.haiku++; return groqResult; }
+
+  console.log('[ModelRouter] moderate → Groq unavailable, trying Gemini Flash');
+  const geminiResult = await callGeminiFlash(system, userText);
+  if (geminiResult) { callCounts.haiku++; return geminiResult; }
+
+  console.log('[ModelRouter] moderate → Gemini unavailable, falling back to Haiku');
+  callCounts.haiku++;
+  return callAnthropic(ANTHROPIC_MODELS.haiku, system, userText, maxTokens);
 }

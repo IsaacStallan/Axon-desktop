@@ -19,6 +19,7 @@ import {
   getCrossDeviceContext,
 } from './deviceCoordinator';
 import { route, type TaskType }            from './modelRouter';
+import { recordInterventionFired }         from './rateLimiter';
 import { buildFraming }                    from './psychologyLayer';
 import { setLastProactiveMessage }         from './proactiveContext';
 import {
@@ -274,6 +275,7 @@ async function firePrewritten(message: string, type: InterventionRecord['type'])
   if (!(await acquireSpeakerLock(60_000))) return;
   try {
     await speak(message);
+    recordInterventionFired();
     pendingOutcome = {
       id:            record.id,
       scoreAtFiring: getProductivityScore(),
@@ -620,6 +622,7 @@ async function fire(
   setLastProactiveMessage(message, type);
   console.log(`[InterventionDecider] ${type}: "${message.slice(0, 80)}"`);
   await speak(message);
+  recordInterventionFired();
 
   // ── Tier 2 / 3: Environmental action (mac-only) ────────────────────────────
   if (process.platform === 'darwin' && (type === 'early' || type === 'recovery')) {

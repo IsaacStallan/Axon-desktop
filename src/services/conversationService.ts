@@ -24,6 +24,8 @@ import { getCurrentScreenSummary } from './screenAwareness';
 import { getPersonality, getEmotionPromptFragment } from './emotionEngine';
 import { classifyMessageComplexity, routeSimple } from './modelRouter';
 import { recordTokens } from './costTracker';
+import { checkConversationLimit, startConversationTimer, stopConversationTimer } from './rateLimiter';
+import { isMuted } from './muteControl';
 
 
 
@@ -834,8 +836,19 @@ export function isConversationActive(): boolean {
 }
 
 export async function triggerConversation(): Promise<void> {
+  // ── Rate limit check ────────────────────────────────────────────────────────
+  const limitCheck = await checkConversationLimit();
+  if (!limitCheck.allowed) {
+    console.warn('[Conversation] rate limit hit:', limitCheck.reason);
+    if (limitCheck.reason && !isMuted()) {
+      await speak(limitCheck.reason);
+    }
+    return;
+  }
+
   conversationActive = true;
   let silenceStreak  = 0;
+  startConversationTimer();
 
   // Reset per-session buffers
   sessionExchanges.splice(0, sessionExchanges.length);
@@ -957,7 +970,9 @@ export async function triggerConversation(): Promise<void> {
         extractAndSaveFacts(sessionExchanges.slice(-3)).catch(() => {});
       }
 
-      if (lastSendDidStream) {
+      if (isMuted()) {
+        console.log('[ElevenLabs] muted — skipping speech');
+      } else if (lastSendDidStream) {
         // TTS was already queued sentence-by-sentence during sendMessage.
         // Wait for the full queue to drain before the next listen window opens.
         await waitForSpeakQueue();
@@ -978,6 +993,7 @@ export async function triggerConversation(): Promise<void> {
   }
 
   conversationActive = false;
+  stopConversationTimer();
   history.splice(0, history.length);
 
   // Save short-term session memory for next conversation (within 2 hours)

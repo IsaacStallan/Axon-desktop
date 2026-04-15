@@ -22,6 +22,27 @@ import { getCurrentScreenSummary } from './screenAwareness';
 const POLL_INTERVAL_MS     = 5 * 60_000;   // 5-minute pattern-engine tick
 const PATTERN_UPDATE_EVERY = 2;            // update today's pattern every 2 polls (10 min)
 
+// ── Snooze state ───────────────────────────────────────────────────────────────
+
+let snoozeUntilMs = 0;
+
+/**
+ * Silence all interventions until the given number of minutes have elapsed.
+ * Pass 999 to snooze for the rest of the day.
+ */
+export function snoozeInterventions(minutes: number): void {
+  const ms = minutes >= 999
+    ? new Date().setHours(23, 59, 59, 999) - Date.now()
+    : minutes * 60_000;
+  snoozeUntilMs = Date.now() + ms;
+  const label   = minutes >= 999 ? 'rest of day' : `${minutes}min`;
+  console.log(`[DecisionEngine] interventions snoozed for ${label}`);
+}
+
+export function isSnoozed(): boolean {
+  return Date.now() < snoozeUntilMs;
+}
+
 // ── In-memory session tracking ─────────────────────────────────────────────────
 
 let sessionLogSnapshot    = 0;   // length of getSessionLog() last time we persisted
@@ -153,7 +174,12 @@ async function poll(): Promise<void> {
     (screenCtx ? ` | screen: ${screenCtx}` : ''),
   );
 
-  // 5. Pass to intervention decider — it owns all firing logic and cooldowns
+  // 5. Pass to intervention decider — skip if snoozed
+  if (isSnoozed()) {
+    const remMins = Math.ceil((snoozeUntilMs - Date.now()) / 60_000);
+    console.log(`[DecisionEngine] snoozed — skipping intervention (${remMins}min remaining)`);
+    return;
+  }
   await evaluateIntervention(pattern);
 }
 
