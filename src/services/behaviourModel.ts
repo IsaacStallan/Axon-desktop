@@ -1,6 +1,7 @@
 import fs   from 'fs';
 import path from 'path';
 import { app } from 'electron';
+import { execSync } from 'child_process';
 import * as cloudSync from './cloudSync';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -269,6 +270,27 @@ export function seedDefaultProfileIfMissing(): void {
   if (!fs.existsSync(fp('user_profile.json'))) {
     saveUserProfile(ISAAC_DEFAULT_PROFILE);
     console.log('[BehaviourModel] seeded Isaac\'s default profile');
+  }
+}
+
+// ── System screen time ────────────────────────────────────────────────────────
+
+/**
+ * Returns approximate screen time today in minutes using system boot time.
+ * Caps at 16 hours (960 min) as a sanity ceiling.
+ * macOS-only; returns 0 on other platforms.
+ */
+export function getSystemScreenTimeToday(): number {
+  if (process.platform !== 'darwin') return 0;
+  try {
+    const out   = execSync('sysctl -n kern.boottime', { encoding: 'utf8' });
+    const match = out.match(/sec = (\d+)/);
+    if (!match) return 0;
+    const bootMs   = parseInt(match[1]) * 1000;
+    const uptimeMs = Date.now() - bootMs;
+    return Math.min(Math.round(uptimeMs / 60_000), 16 * 60);
+  } catch {
+    return 0;
   }
 }
 

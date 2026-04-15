@@ -110,12 +110,6 @@ function escapeHtml(s: string): string {
 window.axon.onStatsUpdate((stats: AxonStats) => {
   const get = (id: string) => document.getElementById(id);
 
-  // ── Focus / Drift ───────────────────────────────────────────────────────────
-  const focusEl = get('focus-time');
-  const driftEl = get('drift-time');
-  if (focusEl) focusEl.textContent = `${stats.focusMin}m`;
-  if (driftEl) driftEl.textContent = `${stats.driftMin}m`;
-
   // ── Capabilities panel ──────────────────────────────────────────────────────
   const capabilitiesList = get('capabilities-list');
   if (capabilitiesList) {
@@ -146,8 +140,7 @@ window.axon.onStatsUpdate((stats: AxonStats) => {
   // ── Capacity panel ──────────────────────────────────────────────────────────
   const capList = get('capacity-list');
   if (capList && stats.capacity) {
-    const { cognitiveCapacity, lastBreakMins, screenTimeMins, followThrough, todayCost } = stats.capacity;
-    const ftText    = followThrough !== null ? `${followThrough}%` : '—';
+    const { cognitiveCapacity, lastBreakMins, screenTimeMins, todayCost } = stats.capacity;
     const h         = Math.floor(screenTimeMins / 60);
     const m         = screenTimeMins % 60;
     const screenStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
@@ -165,10 +158,6 @@ window.axon.onStatsUpdate((stats: AxonStats) => {
       <div class="panel-row">
         <span class="panel-row-label">SCREEN TIME</span>
         <span class="panel-row-value">${screenStr}</span>
-      </div>
-      <div class="panel-row">
-        <span class="panel-row-label">FOLLOW-THROUGH</span>
-        <span class="panel-row-value">${ftText}</span>
       </div>
       <div class="panel-row">
         <span class="panel-row-label">TODAY</span>

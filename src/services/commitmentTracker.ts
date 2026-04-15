@@ -56,12 +56,18 @@ export function addCommitment(text: string, dueDate: string | null = null): Comm
 }
 
 /**
- * Returns commitments that are incomplete and haven't been followed up today.
+ * Returns commitments that are incomplete, not followed up today,
+ * and made within the last 48 hours.
+ * Older commitments are treated as archived — they remain in storage
+ * but are not surfaced in the prompt each session.
  */
 export function getOpenCommitments(): Commitment[] {
-  const today = new Date().toISOString().slice(0, 10);
+  const today       = new Date().toISOString().slice(0, 10);
+  const cutoff48h   = Date.now() - 48 * 60 * 60 * 1000;
   return readAll().filter(c => {
     if (c.completedAt) return false;
+    // Archive commitments older than 48 hours
+    if (new Date(c.madeAt).getTime() < cutoff48h) return false;
     // Don't re-surface if we already followed up today
     if (c.followedUpAt && c.followedUpAt.startsWith(today)) return false;
     return true;
@@ -112,10 +118,27 @@ export function detectCompletionsFromTranscript(transcript: string): string[] {
   const norm = transcript.toLowerCase().replace(/[^\w\s]/g, ' ');
 
   const COMPLETION_SIGNALS = [
-    'finished', 'done with', 'completed', 'i did', 'just did',
-    'i\'ve done', 'got it done', 'wrapped up', 'took care of',
-    'knocked out', 'sent it', 'sent the', 'did the', 'made the',
-    'wrote the', 'submitted', 'got that done', 'just finished',
+    // Direct
+    'done', 'finished', 'completed', 'sorted', 'shipped',
+    // Past tense actions
+    'sent it', 'sent that', 'just sent', 'already sent',
+    'did it', 'did that', 'just did', 'already did',
+    'built it', 'built that', 'just built',
+    'wrote it', 'wrote that', 'just wrote',
+    'posted it', 'posted that', 'just posted',
+    'submitted', 'just submitted', 'already submitted',
+    'recorded', 'just recorded', 'already recorded',
+    // Casual
+    'its done', "it's done", 'all done', 'good to go',
+    'wrapped up', 'wrapped that', 'knocked that out',
+    'taken care of', 'handled', 'handled that',
+    'got it done', 'got that done',
+    'finished that', 'finished it',
+    'yeah done', 'yep done', 'yep finished',
+    'just finished', 'just wrapped',
+    // Existing patterns kept for coverage
+    'done with', 'i did', 'i\'ve done', 'took care of',
+    'knocked out', 'sent the', 'did the', 'made the', 'wrote the',
   ];
 
   const hasSignal = COMPLETION_SIGNALS.some(s => norm.includes(s));

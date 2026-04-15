@@ -1,4 +1,4 @@
-import { exec } from 'child_process';
+import { exec, execSync } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
@@ -125,9 +125,57 @@ export function getTimeOnCurrentApp(): number {
   return getTimeOnApp(currentApp);
 }
 
+// ── Boot-aware initialisation ─────────────────────────────────────────────────
+
+function getSystemUptimeMinutes(): number {
+  if (process.platform !== 'darwin') return 0;
+  try {
+    const out   = execSync('sysctl -n kern.boottime', { encoding: 'utf8' });
+    const match = out.match(/sec = (\d+)/);
+    if (!match) return 0;
+    const bootMs = parseInt(match[1]) * 1000;
+    return Math.round((Date.now() - bootMs) / 60_000);
+  } catch {
+    return 0;
+  }
+}
+
+/** Get list of currently visible (non-background) app names via AppleScript. */
+async function getOpenApps(): Promise<string[]> {
+  if (process.platform !== 'darwin') return [];
+  try {
+    const { stdout } = await execAsync(
+      `osascript -e 'tell application "System Events" to get name of every application process whose background only is false'`,
+      { timeout: 5000 },
+    );
+    return stdout.trim().split(', ').map(s => s.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * On startup, seed sessionActiveTimes with a conservative estimate for apps
+ * that are already open, based on system uptime. Uses 20% of uptime as a
+ * lower-bound estimate (apps that are open now have likely been open a while).
+ */
+async function initFromSystemState(): Promise<void> {
+  const bootMins = getSystemUptimeMinutes();
+  if (bootMins === 0) return;
+
+  const openApps = await getOpenApps();
+  for (const appName of openApps) {
+    sessionActiveTimes.set(appName, Math.round(bootMins * 0.2 * 60_000));
+  }
+  console.log(`[WindowMonitor] initialised ${openApps.length} apps from system state (uptime: ${bootMins}min)`);
+}
+
 // ── Poll ──────────────────────────────────────────────────────────────────────
 
 export function startWindowMonitor(): void {
+  // Seed app times from system state before the polling loop begins.
+  // Fire-and-forget so monitoring starts immediately without waiting.
+  initFromSystemState().catch(() => {});
   poll(); // immediate first sample
   setInterval(poll, 15_000); // 15-second resolution keeps context fresh
 }

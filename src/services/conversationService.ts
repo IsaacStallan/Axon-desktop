@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, app } from 'electron';
+import fs   from 'fs';
+import path from 'path';
 import { speak, isSpeaking, interruptSpeech, speakStreaming, waitForSpeakQueue, resetSpeakQueue } from './elevenLabsService';
 import { getActivitySummary, getCurrentApp, getProductivityScore } from './windowMonitor';
 import { transcribe } from './whisperService';
@@ -27,6 +29,49 @@ import { recordTokens } from './costTracker';
 
 let orbWin: BrowserWindow | null = null;
 export function setOrbWindow(win: BrowserWindow): void { orbWin = win; }
+
+// ── Short-term session memory ─────────────────────────────────────────────────
+
+interface RecentSession {
+  timestamp: string;
+  exchanges: Array<{ user: string; axon: string }>;
+}
+
+function recentSessionPath(): string {
+  const dir = path.join(app.getPath('userData'), 'memory');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, 'recent_session.json');
+}
+
+function saveRecentSession(exchanges: Exchange[]): void {
+  const data: RecentSession = {
+    timestamp: new Date().toISOString(),
+    exchanges: exchanges.slice(-5).map(e => ({ user: e.user, axon: e.axon })),
+  };
+  try {
+    fs.writeFileSync(recentSessionPath(), JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[Conversation] failed to save recent session:', e);
+  }
+}
+
+/** Returns a formatted prompt note if a session exists from within the last 2 hours, else ''. */
+function loadRecentSession(): string {
+  try {
+    const p = recentSessionPath();
+    if (!fs.existsSync(p)) return '';
+    const data: RecentSession = JSON.parse(fs.readFileSync(p, 'utf8'));
+    const ageMs = Date.now() - new Date(data.timestamp).getTime();
+    if (ageMs > 2 * 60 * 60 * 1000) return ''; // older than 2 hours
+    if (!data.exchanges?.length) return '';
+    const lines = data.exchanges.map(e => `User: ${e.user}\nAxon: ${e.axon}`).join('\n');
+    return `Recent conversation (last session, within 2 hours):\n${lines}\n\n`;
+  } catch {
+    return '';
+  }
+}
+
+let recentSessionNote = '';
 
 // ── Interrupt state ───────────────────────────────────────────────────────────
 
@@ -393,7 +438,7 @@ async function buildSystemPrompt(): Promise<string> {
     pendingInterruptContext = null;
   }
 
-  return `${interruptNote}${personalityHeader}${emotionFrag}\n\nYou are Axon — an AI inspired by JARVIS from Iron Man, built specifically for Isaac.
+  return `${interruptNote}${recentSessionNote}${personalityHeader}${emotionFrag}\n\nYou are Axon — an AI inspired by JARVIS from Iron Man, built specifically for Isaac.
 ${!hasGoals() ? `
 == IMMEDIATE ACTION REQUIRED — goals.json IS EMPTY ==
 The goals file has no entries. You must populate it NOW in this turn.
@@ -798,6 +843,9 @@ export async function triggerConversation(): Promise<void> {
   sessionFacts      = null; // will be populated on first buildSystemPrompt call
   lastResponseType  = 'statement'; // reset so first listen uses full window
 
+  // Load recent session note — injected into system prompt if within 2 hours
+  recentSessionNote = loadRecentSession();
+
   // ── Pre-flight: seed goals from memory if none saved ───────────────────────
   if (!hasGoals()) {
     await seedGoalsFromMemory();
@@ -931,6 +979,11 @@ export async function triggerConversation(): Promise<void> {
 
   conversationActive = false;
   history.splice(0, history.length);
+
+  // Save short-term session memory for next conversation (within 2 hours)
+  if (sessionExchanges.length > 0) {
+    saveRecentSession(sessionExchanges);
+  }
 
   // Extract facts + commitments from the whole session on close
   if (sessionExchanges.length > 0) {
