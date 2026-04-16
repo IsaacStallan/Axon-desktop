@@ -78,7 +78,7 @@ function extractCommandAfterWakeWord(transcript: string): string {
 // ── Directed speech confidence scoring ───────────────────────────────────────
 
 const QUESTION_WORDS = /\b(what|how|when|where|why|can|could|should|will|do|is|are)\b/i;
-const COMMAND_VERBS  = /\b(play|open|search|tell|show|find|help|stop|set)\b/i;
+const COMMAND_VERBS  = /\b(play|open|search|tell|show|find|help|stop|set|need|wake)\b/i;
 const HALLUCINATION_PATTERNS = [
   'thank you', 'thanks', 'bye bye', 'goodbye', 'see you',
   "you're welcome", 'welcome back', 'have a great day',
@@ -89,29 +89,38 @@ const HALLUCINATION_PATTERNS = [
  * speech intended for Axon, not accidental noise or a hallucination.
  *
  * Scoring:
- *   +0.3  contains a question word
- *   +0.3  contains a direct command verb
- *   +0.2  transcript is over 4 words
- *   +0.2  contains "axon" or the custom wake word
- *   -0.4  under 3 words total
+ *   auto  short phrase (≤8 words) containing wake word → 0.7
+ *   +0.5  contains "axon" or the custom wake word
+ *   +0.25 contains a question word
+ *   +0.25 contains a direct command verb
+ *   +0.15 transcript is over 3 words
+ *   -0.2  under 3 words total
  *   -0.8  matches a known hallucination pattern
  */
 function scoreDirectedSpeech(transcript: string): number {
   const lower     = transcript.toLowerCase();
-  const wordCount = transcript.trim().split(/\s+/).filter(Boolean).length;
-  let   score     = 0;
+  const words     = transcript.trim().split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+  const wakeWord  = customWakeWord ?? 'axon';
 
-  if (QUESTION_WORDS.test(lower))                              score += 0.3;
-  if (COMMAND_VERBS.test(lower))                               score += 0.3;
-  if (wordCount > 4)                                           score += 0.2;
-  if (lower.includes('axon') || (customWakeWord && lower.includes(customWakeWord))) score += 0.2;
-  if (wordCount < 3)                                           score -= 0.4;
-  if (HALLUCINATION_PATTERNS.some(p => lower.includes(p)))    score -= 0.8;
+  // Short phrases containing the wake word are almost always directed at Axon
+  if (wordCount <= 8 && (lower.includes('axon') || lower.includes(wakeWord))) {
+    return 0.7;
+  }
+
+  let score = 0;
+
+  if (lower.includes('axon') || lower.includes(wakeWord))                      score += 0.5;
+  if (/\?|what|how|when|where|why|can|could|should|will|do |is |are /.test(lower)) score += 0.25;
+  if (/play|open|search|tell|show|find|help|stop|set|wake|need|hey/.test(lower))   score += 0.25;
+  if (wordCount > 3)                                                            score += 0.15;
+  if (wordCount < 3)                                                            score -= 0.2;
+  if (HALLUCINATION_PATTERNS.some(p => lower.includes(p)))                     score -= 0.8;
 
   return Math.max(0, Math.min(1, score));
 }
 
-const CONFIDENCE_THRESHOLD = 0.6;
+const CONFIDENCE_THRESHOLD = 0.45;
 
 // ── Sleep-word detection ──────────────────────────────────────────────────────
 
