@@ -14,6 +14,7 @@ import {
 import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { existsSync, writeFileSync } from 'fs';
 import * as dotenv from 'dotenv';
 import { autoUpdater } from 'electron-updater';
 dotenv.config();
@@ -36,7 +37,8 @@ const { startScreenObserver, setOrbWindow: setObserverOrbWindow } = require('./s
 const { startEmotionEngine } = require('./services/emotionEngine');
 console.error('[Main] loading conversationService');
 const { triggerConversation, stopConversation, setOrbWindow: setConvOrbWindow, handleInterrupt } = require('./services/conversationService');
-const { setOrbWindow: setTtsOrbWindow } = require('./services/elevenLabsService');
+const { setOrbWindow: setTtsOrbWindow, speak: elevenLabsSpeak } = require('./services/elevenLabsService');
+const { transcribe: whisperTranscribe } = require('./services/whisperService');
 console.error('[Main] loading briefingService');
 const { startBriefingService } = require('./services/briefingService');
 const { setOrbWindow: setSubAgentOrbWindow } = require('./services/subAgentOrchestrator');
@@ -70,13 +72,16 @@ if (!gotLock) {
 }
 
 // ── Globals ─────────────────────────────────────────────────────────────────
-let orbWindow:   BrowserWindow | null = null;
-let tray:        Tray | null = null;
-let isConversing = false;
-let updateReady  = false;
+let orbWindow:        BrowserWindow | null = null;
+let onboardingWindow: BrowserWindow | null = null;
+let tray:             Tray | null = null;
+let isConversing  = false;
+let updateReady   = false;
 
 declare const ORB_WINDOW_WEBPACK_ENTRY: string;
 declare const ORB_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+declare const ONBOARDING_WINDOW_WEBPACK_ENTRY: string;
+declare const ONBOARDING_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 // ── Create the floating orb window ──────────────────────────────────────────
 function createOrbWindow(): BrowserWindow {
@@ -313,6 +318,84 @@ function startWakeWordListener(): void {
   );
 }
 
+// ── Onboarding window ────────────────────────────────────────────────────────
+
+function createOnboardingWindow(): BrowserWindow {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const win = new BrowserWindow({
+    width:     800,
+    height:    600,
+    x:         Math.round((width  - 800) / 2),
+    y:         Math.round((height - 600) / 2),
+    frame:     false,
+    resizable: false,
+    show:      true,
+    webPreferences: {
+      preload:          ONBOARDING_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      contextIsolation: true,
+      nodeIntegration:  false,
+    },
+  });
+  win.loadURL(ONBOARDING_WINDOW_WEBPACK_ENTRY);
+  return win;
+}
+
+// ── Onboarding IPC handlers ───────────────────────────────────────────────────
+
+ipcMain.handle('permissions:screen', () =>
+  systemPreferences.getMediaAccessStatus('screen'),
+);
+
+ipcMain.handle('permissions:accessibility', () =>
+  systemPreferences.isTrustedAccessibilityClient(false),
+);
+
+ipcMain.handle('permissions:requestAccessibility', () =>
+  systemPreferences.isTrustedAccessibilityClient(true),
+);
+
+ipcMain.handle('onboarding:speak', async (_e, text: string) => {
+  try {
+    await (elevenLabsSpeak as (t: string) => Promise<void>)(text);
+  } catch (e) {
+    console.warn('[Onboarding] TTS error:', e);
+  }
+});
+
+ipcMain.handle('onboarding:listen', async (_e, secs: number) => {
+  try {
+    return await (whisperTranscribe as (s: number) => Promise<string>)(secs ?? 12);
+  } catch (e) {
+    console.warn('[Onboarding] transcribe error:', e);
+    return '';
+  }
+});
+
+ipcMain.handle('onboarding:saveAnswers', (_e, answers: unknown) => {
+  try {
+    writeFileSync(
+      path.join(app.getPath('userData'), 'onboarding-answers.json'),
+      JSON.stringify(answers, null, 2), 'utf8',
+    );
+  } catch (e) {
+    console.warn('[Onboarding] saveAnswers error:', e);
+  }
+});
+
+ipcMain.handle('onboarding:complete', () => {
+  try {
+    writeFileSync(
+      path.join(app.getPath('userData'), 'onboarding-complete.json'),
+      JSON.stringify({ completedAt: new Date().toISOString() }), 'utf8',
+    );
+  } catch (e) {
+    console.warn('[Onboarding] could not write completion marker:', e);
+  }
+  onboardingWindow?.destroy();
+  onboardingWindow = null;
+  startFullAxon();
+});
+
 // ── IPC: renderer signals ───────────────────────────────────────────────────
 ipcMain.on('axon:interrupt', () => {
   console.log('[Main] interrupt triggered via UI');
@@ -364,50 +447,14 @@ app.on('second-instance', () => {
   }
 });
 
-// ── App lifecycle ────────────────────────────────────────────────────────────
-app.on('ready', () => {
+// ── Full Axon startup ─────────────────────────────────────────────────────────
+// Called either directly from ready (if onboarding already done)
+// or from the onboarding:complete IPC handler.
+
+function startFullAxon(): void {
   try {
-    console.log('[Main] app ready');
-    app.dock?.hide(); // macOS — no dock icon
-    app.setLoginItemSettings({ openAtLogin: true });
-
-    // ── Monitor-only mode ──────────────────────────────────────────────────
-    // DEVICE_ROLE=monitor: run windowMonitor + Supabase heartbeat only.
-    // No orb window, no voice, no conversation pipeline.
-    if (process.env.DEVICE_ROLE === 'monitor') {
-      tray = createTray();  // tray keeps the process alive and allows quit
-      startSilentMonitor();
-      console.log('[Main] running in monitor mode');
-      return;
-    }
-
-    // ── Full Axon mode (default) ───────────────────────────────────────────
-
-    if (process.platform === 'darwin') {
-      systemPreferences.askForMediaAccess('microphone').then((granted: boolean) => {
-        if (!granted) {
-          console.error('[Main] Microphone access denied by macOS');
-        } else {
-          console.log('[Main] Microphone access granted');
-        }
-      });
-    }
-
-    // Grant microphone (and camera) permissions to the renderer automatically.
-    // Without this, Electron's internal permission system blocks getUserMedia
-    // in the renderer even when macOS has already granted system-level access.
-    session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-      if (permission === 'media') {
-        console.log('[Main] granting media permission to renderer');
-        callback(true);
-      } else {
-        callback(false);
-      }
-    });
-
     console.log('[Main] creating orb window');
     orbWindow = createOrbWindow();
-    console.log('[Main] orb window created');
     setOrbWindow(orbWindow);
     setConvOrbWindow(orbWindow);
     setTtsOrbWindow(orbWindow);
@@ -415,66 +462,82 @@ app.on('ready', () => {
     setCodingAgentOrbWindow(orbWindow);
     setScreenOrbWindow(orbWindow);
     setObserverOrbWindow(orbWindow);
-    // Send initial stats once renderer has loaded, then every 30 s
     setTimeout(() => sendStats(), 4000);
     setInterval(sendStats, 30_000);
-    console.log('[Main] creating tray');
-    tray      = createTray();
-    console.log('[Main] tray created');
-    console.log('[Main] starting window monitor');
+    if (!tray) tray = createTray();
     startWindowMonitor();
-    console.log('[Main] starting decision loop');
     startDecisionLoop(beginConversation);
-    console.log('[Main] starting briefing service');
     startBriefingService(beginConversation);
-    console.log('[Main] starting screen monitor');
     startScreenMonitor();
-    console.log('[Main] starting screen observer');
     startScreenObserver();
-    console.log('[Main] starting emotion engine');
     startEmotionEngine();
-    console.log('[Main] starting wake-word listener');
     startWakeWordListener();
 
-    // Global hotkey — Cmd+Shift+A triggers conversation same as wake word
-    const hotkeyRegistered = globalShortcut.register('CommandOrControl+Shift+A', () => {
-      console.log('[Main] hotkey activated');
-      beginConversation();
+    globalShortcut.register('CommandOrControl+Shift+A', () => {
+      console.log('[Main] hotkey activated'); beginConversation();
     });
-    if (!hotkeyRegistered) {
-      console.warn('[Main] globalShortcut CommandOrControl+Shift+A could not be registered');
-    }
-
-    // Global hotkey — Cmd+Shift+I interrupts current TTS playback
-    const interruptRegistered = globalShortcut.register('CommandOrControl+Shift+I', () => {
+    globalShortcut.register('CommandOrControl+Shift+I', () => {
       console.log('[Main] interrupt hotkey fired');
       (handleInterrupt as () => void)();
     });
-    if (!interruptRegistered) {
-      console.warn('[Main] globalShortcut CommandOrControl+Shift+I could not be registered');
-    }
 
-    // ── Sleep / wake handling ────────────────────────────────────────────────
-    // On suspend: stop the voice listener so the WebSocket and AudioContext are
-    // cleanly torn down before the system sleeps.
-    // On resume: wait 3 s for the audio device to become available again, then
-    // restart — but only if a conversation isn't already in progress.
     powerMonitor.on('suspend', () => {
       console.log('[Main] system suspending — stopping voice listener');
       stopVoiceListener();
     });
-
     powerMonitor.on('resume', () => {
       console.log('[Main] system resumed — restarting voice listener in 5 s');
       setTimeout(() => {
-        if (!isConversing) {
-          console.log('[Main] restarting wake-word listener after wake');
-          startWakeWordListener();
-        }
+        if (!isConversing) startWakeWordListener();
       }, 5000);
     });
 
     console.log('[Main] Axon desktop started');
+  } catch (err) {
+    console.error('[Main] startFullAxon error:', err);
+  }
+}
+
+// ── App lifecycle ────────────────────────────────────────────────────────────
+app.on('ready', () => {
+  try {
+    console.log('[Main] app ready');
+    app.dock?.hide();
+    app.setLoginItemSettings({ openAtLogin: true });
+
+    // Grant media permissions to all renderer windows
+    session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+      callback(permission === 'media');
+    });
+
+    // ── Monitor-only mode ──────────────────────────────────────────────────
+    if (process.env.DEVICE_ROLE === 'monitor') {
+      tray = createTray();
+      startSilentMonitor();
+      console.log('[Main] running in monitor mode');
+      return;
+    }
+
+    // Request mic access from macOS
+    if (process.platform === 'darwin') {
+      systemPreferences.askForMediaAccess('microphone').then((granted: boolean) => {
+        if (!granted) console.error('[Main] Microphone access denied by macOS');
+        else          console.log('[Main] Microphone access granted');
+      });
+    }
+
+    tray = createTray();
+
+    // ── First-launch check ─────────────────────────────────────────────────
+    const onboardingDonePath = path.join(app.getPath('userData'), 'onboarding-complete.json');
+    if (!existsSync(onboardingDonePath)) {
+      console.log('[Main] first launch — showing onboarding');
+      onboardingWindow = createOnboardingWindow();
+      // startFullAxon() is called by the onboarding:complete IPC handler
+      return;
+    }
+
+    startFullAxon();
   } catch (err) {
     console.error('[Main] STARTUP ERROR in ready handler:', err);
   }

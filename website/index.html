@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Axon — The AI that makes you more of yourself</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --cyan:   #00D4FF;
+      --bg:     #080c10;
+      --card:   #0b1018;
+      --border: #0e1e2e;
+      --text:   #8899aa;
+      --hi:     #ccdde8;
+      --cyan-dim: rgba(0,212,255,0.12);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 16px; line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    /* scanlines */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background: repeating-linear-gradient(
+        to bottom, transparent 0px, transparent 3px,
+        rgba(0,212,255,0.008) 3px, rgba(0,212,255,0.008) 4px
+      );
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(8,12,16,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 48px; height: 60px;
+    }
+    .wordmark {
+      font-family: Georgia, serif; font-size: 18px;
+      letter-spacing: 6px; color: var(--cyan);
+    }
+    .nav-cta {
+      background: var(--cyan); color: #000;
+      font-size: 12px; letter-spacing: 2px;
+      padding: 9px 24px; cursor: pointer;
+      border: none; font-weight: 600;
+      transition: opacity 0.2s;
+    }
+    .nav-cta:hover { opacity: 0.85; }
+
+    /* ── Sections ── */
+    section { position: relative; z-index: 1; }
+
+    /* ── Hero ── */
+    #hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 80px 24px 60px;
+      text-align: center;
+    }
+    #hero-canvas { display: block; margin-bottom: 40px; }
+    #hero h1 {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: clamp(32px, 5vw, 56px); font-weight: normal;
+      color: var(--cyan); letter-spacing: 1px;
+      max-width: 700px; line-height: 1.2; margin-bottom: 20px;
+    }
+    #hero p {
+      font-size: clamp(15px, 2vw, 18px); color: var(--text);
+      max-width: 560px; line-height: 1.7; margin-bottom: 40px;
+    }
+    .hero-btns { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+    .btn-cta {
+      background: var(--cyan); color: #000;
+      font-size: 13px; letter-spacing: 2px; font-weight: 600;
+      padding: 14px 36px; border: none; cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-cta:hover { opacity: 0.85; }
+    .btn-outline {
+      background: transparent; color: var(--cyan);
+      font-size: 13px; letter-spacing: 2px;
+      padding: 13px 36px; border: 1px solid var(--cyan); cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+    .btn-outline:hover { background: var(--cyan-dim); }
+    .hero-fine {
+      margin-top: 24px; font-size: 12px;
+      color: var(--text); opacity: 0.45; letter-spacing: 0.5px;
+    }
+
+    /* ── Section header ── */
+    .section-wrap { max-width: 1080px; margin: 0 auto; padding: 96px 32px; }
+    .section-label {
+      font-size: 10px; letter-spacing: 4px; color: var(--cyan);
+      opacity: 0.7; margin-bottom: 16px; text-transform: uppercase;
+    }
+    .section-title {
+      font-family: Georgia, serif;
+      font-size: clamp(24px, 3vw, 36px); font-weight: normal;
+      color: var(--hi); margin-bottom: 56px; max-width: 560px;
+    }
+
+    /* ── How it works ── */
+    #how { border-top: 1px solid var(--border); }
+    .how-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 2px; background: var(--border);
+    }
+    .how-card {
+      background: var(--card); padding: 40px 36px;
+    }
+    .how-num {
+      font-size: 11px; letter-spacing: 3px;
+      color: var(--cyan); opacity: 0.5; margin-bottom: 20px;
+    }
+    .how-title {
+      font-family: Georgia, serif; font-size: 22px;
+      color: var(--cyan); margin-bottom: 14px;
+    }
+    .how-body { font-size: 14px; color: var(--text); line-height: 1.7; }
+
+    /* ── Capabilities ── */
+    #capabilities { border-top: 1px solid var(--border); }
+    .cap-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 2px; background: var(--border);
+    }
+    .cap-item {
+      background: var(--card); padding: 24px 28px;
+      display: flex; align-items: flex-start; gap: 14px;
+    }
+    .cap-dot { color: var(--cyan); font-size: 18px; flex-shrink: 0; margin-top: 2px; }
+    .cap-name { font-size: 13px; color: var(--hi); letter-spacing: 0.3px; }
+    .cap-desc { font-size: 11px; color: var(--text); margin-top: 4px; opacity: 0.6; }
+
+    /* ── Pricing ── */
+    #pricing { border-top: 1px solid var(--border); }
+    .pricing-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 2px; background: var(--border);
+    }
+    .price-card {
+      background: var(--card); padding: 40px 36px; position: relative;
+    }
+    .price-card.featured {
+      border: 1px solid var(--cyan);
+      background: rgba(0,212,255,0.03);
+    }
+    .price-tag {
+      font-size: 10px; letter-spacing: 3px; color: var(--cyan);
+      background: var(--cyan-dim); padding: 4px 10px;
+      position: absolute; top: -1px; right: 28px;
+      display: none;
+    }
+    .price-card.featured .price-tag { display: block; }
+    .price-tier {
+      font-family: Georgia, serif; font-size: 20px;
+      color: var(--hi); margin-bottom: 8px;
+    }
+    .price-amount {
+      font-size: 38px; color: var(--cyan);
+      font-weight: 200; margin-bottom: 4px;
+    }
+    .price-amount span { font-size: 16px; opacity: 0.6; }
+    .price-sub { font-size: 12px; color: var(--text); margin-bottom: 28px; opacity: 0.55; }
+    .price-features { list-style: none; }
+    .price-features li {
+      font-size: 13px; color: var(--text);
+      padding: 7px 0; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .price-features li::before { content: '·'; color: var(--cyan); font-size: 20px; }
+
+    /* ── Download section ── */
+    #download {
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+    #download .section-wrap { display: flex; flex-direction: column; align-items: center; }
+    .download-btn {
+      display: inline-block; background: var(--cyan); color: #000;
+      font-size: 14px; letter-spacing: 2px; font-weight: 700;
+      padding: 18px 48px; margin-top: 16px;
+      cursor: pointer; border: none; transition: opacity 0.2s;
+    }
+    .download-btn:hover { opacity: 0.85; }
+    .download-meta {
+      font-size: 11px; color: var(--text); opacity: 0.45;
+      margin-top: 16px; letter-spacing: 0.5px;
+    }
+    .built-by {
+      font-size: 12px; color: var(--text); opacity: 0.3;
+      margin-top: 32px; letter-spacing: 1px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border); padding: 32px 48px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 16px;
+    }
+    .footer-wordmark {
+      font-family: Georgia, serif; font-size: 14px;
+      letter-spacing: 5px; color: var(--cyan); opacity: 0.5;
+    }
+    .footer-right { font-size: 12px; color: var(--text); opacity: 0.35; }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a:hover { color: var(--cyan); }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      nav { padding: 0 24px; }
+      .how-grid { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; }
+      footer { flex-direction: column; text-align: center; }
+    }
+    @media (max-width: 480px) {
+      .hero-btns { flex-direction: column; align-items: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <div class="wordmark">ARETICA</div>
+    <a href="#download"><button class="nav-cta">Download</button></a>
+  </nav>
+
+  <!-- Hero -->
+  <section id="hero">
+    <canvas id="hero-canvas" width="260" height="260"></canvas>
+    <h1>The AI that makes you more of yourself</h1>
+    <p>Axon watches. Intervenes. Executes. So you can focus on what actually matters.</p>
+    <div class="hero-btns">
+      <a href="#download"><button class="btn-cta">Download for Mac</button></a>
+      <a href="#how"><button class="btn-outline">See how it works</button></a>
+    </div>
+    <p class="hero-fine">macOS 12+ &nbsp;·&nbsp; Free to start &nbsp;·&nbsp; No account required</p>
+  </section>
+
+  <!-- How it works -->
+  <section id="how">
+    <div class="section-wrap">
+      <div class="section-label">How it works</div>
+      <div class="section-title">Three things. Relentlessly.</div>
+      <div class="how-grid">
+        <div class="how-card">
+          <div class="how-num">01</div>
+          <div class="how-title">Watches</div>
+          <p class="how-body">Axon monitors your screen and behaviour in real time. It knows what you're doing before you do. Not a tracker — a witness that remembers.</p>
+        </div>
+        <div class="how-card">
+          <div class="how-num">02</div>
+          <div class="how-title">Intervenes</div>
+          <p class="how-body">When you drift, Axon pulls you back. Not with notifications — with a voice that knows you. Built around your goals, your language, your war statement.</p>
+        </div>
+        <div class="how-card">
+          <div class="how-num">03</div>
+          <div class="how-title">Executes</div>
+          <p class="how-body">Ask Axon to do anything. Research, write, code, control your Mac, send emails, book meetings. It acts, not just answers.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Capabilities -->
+  <section id="capabilities">
+    <div class="section-wrap">
+      <div class="section-label">Capabilities</div>
+      <div class="section-title">Everything you need. Nothing you don't.</div>
+      <div class="cap-grid">
+        <div class="cap-item">
+          <div class="cap-dot">◈</div>
+          <div><div class="cap-name">Voice Conversation</div><div class="cap-desc">Wake-word activated, always ready</div></div>
+        </div>
+        <div class="cap-item">
+          <div class="cap-dot">◈</div>
+          <div><div class="cap-name">Screen Awareness</div><div class="cap-desc">Reads your screen in real time</div></div>
+        </div>
+        <div class="cap-item">
+          <div class="cap-dot">◈</div>
+          <div><div class="cap-name">App Control</div><div class="cap-desc">Opens, closes, and controls any app</div></div>
+        </div>
+        <div class="cap-item">
+          <div class="cap-dot">◈</div>
+          <div><div class="cap-name">Browser Automation</div><div class="cap-desc">Searches, clicks, extracts at your command</div></div>
+        </div>
+        <div class="cap-item">
+          <div class="cap-dot">◈</div>
+          <div><div class="cap-name">Email &amp; Calendar</div><div class="cap-desc">Gmail and Google Calendar integrated</div></div>
+        </div>
+        <div class="cap-item">
+          <div class="cap-dot">◈</div>
+          <div><div class="cap-name">Sub-Agents</div><div class="cap-desc">Parallel AI agents for complex tasks</div></div>
+        </div>
+        <div class="cap-item">
+          <div class="cap-dot">◈</div>
+          <div><div class="cap-name">PC Monitoring</div><div class="cap-desc">Cross-device awareness, Windows support</div></div>
+        </div>
+        <div class="cap-item">
+          <div class="cap-dot">◈</div>
+          <div><div class="cap-name">Behavioural Coaching</div><div class="cap-desc">Learns your patterns, fights your weaknesses</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section id="pricing">
+    <div class="section-wrap">
+      <div class="section-label">Pricing</div>
+      <div class="section-title">Start free. Scale when you're ready.</div>
+      <div class="pricing-grid">
+        <div class="price-card">
+          <div class="price-tier">Free</div>
+          <div class="price-amount">$0</div>
+          <div class="price-sub">Forever free</div>
+          <ul class="price-features">
+            <li>10 min/day conversation</li>
+            <li>Basic drift monitoring</li>
+            <li>1 device</li>
+            <li>Voice wake-word</li>
+            <li>Goal tracking</li>
+          </ul>
+        </div>
+        <div class="price-card featured">
+          <div class="price-tag">MOST POPULAR</div>
+          <div class="price-tier">Pro</div>
+          <div class="price-amount">$29<span>/mo</span></div>
+          <div class="price-sub">Billed monthly</div>
+          <ul class="price-features">
+            <li>Unlimited conversation</li>
+            <li>Full proactivity engine</li>
+            <li>Screen awareness</li>
+            <li>Sub-agents</li>
+            <li>2 devices</li>
+            <li>Weekly AI review</li>
+          </ul>
+        </div>
+        <div class="price-card">
+          <div class="price-tier">Enterprise</div>
+          <div class="price-amount" style="font-size:26px;padding-top:8px">Contact us</div>
+          <div class="price-sub">Custom pricing</div>
+          <ul class="price-features">
+            <li>Unlimited everything</li>
+            <li>Custom deployment</li>
+            <li>Team features</li>
+            <li>Up to 10 devices</li>
+            <li>Priority support</li>
+            <li>Custom integrations</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download -->
+  <section id="download">
+    <div class="section-wrap">
+      <div class="section-label">Download</div>
+      <div class="section-title">Get Axon</div>
+      <a href="#"><button class="download-btn">Download for Mac (.dmg)</button></a>
+      <p class="download-meta">v1.0.0 &nbsp;·&nbsp; macOS 12 Monterey or later &nbsp;·&nbsp; Apple Silicon + Intel</p>
+      <p class="built-by">Built by Aretica</p>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-wordmark">ARETICA</div>
+    <div class="footer-right">
+      <div class="footer-links">
+        <a href="#">Privacy</a>
+        <a href="#">Terms</a>
+      </div>
+      <div style="margin-top:8px">© 2026 Aretica. All rights reserved.</div>
+    </div>
+  </footer>
+
+  <!-- Waveform animation -->
+  <script>
+    (function () {
+      const canvas = document.getElementById('hero-canvas');
+      const ctx    = canvas.getContext('2d');
+      const N      = 64;
+      const energy = new Float32Array(N);
+      let   frame  = 0;
+      let   dpr    = window.devicePixelRatio || 1;
+
+      function resize() {
+        dpr = window.devicePixelRatio || 1;
+        const s = Math.min(canvas.offsetWidth, 260);
+        canvas.width  = s * dpr;
+        canvas.height = s * dpr;
+      }
+      resize();
+      window.addEventListener('resize', resize);
+
+      function tick() {
+        for (let i = 0; i < N; i++) {
+          const angleRad = (i / N) * Math.PI * 2;
+          const phase    = frame * 0.008;
+          const h        = 0.4 + 0.6 * ((Math.sin(4 * (angleRad + phase)) + 1) / 2);
+          const target   = 2 + h * 20;
+          energy[i] += (target - energy[i]) * 0.04;
+        }
+      }
+
+      function draw() {
+        const size = canvas.width / dpr;
+        ctx.resetTransform();
+        ctx.scale(dpr, dpr);
+        ctx.clearRect(0, 0, size, size);
+
+        const CX = size / 2, CY = size / 2;
+        const R_INNER = CX * 0.55, R_MAX = CX * 0.91;
+        const RING1   = CX * 0.955, RING2 = CX * 1.015;
+        const BAR_W   = Math.max(1.2, CX * 0.014);
+
+        const rotCW  =  frame * 0.005;
+        const rotCCW = -frame * 0.007;
+        for (const [r, rot] of [[RING1, rotCW], [RING2, rotCCW]]) {
+          ctx.strokeStyle = 'rgba(0,68,85,0.8)';
+          ctx.lineWidth   = 1;
+          for (let seg = 0; seg < 4; seg++) {
+            const start = rot + seg * Math.PI / 2;
+            ctx.beginPath();
+            ctx.arc(CX, CY, r, start, start + Math.PI / 2 - 0.25);
+            ctx.stroke();
+          }
+        }
+
+        for (let i = 0; i < N; i++) {
+          const angle  = (i / N) * Math.PI * 2 - Math.PI / 2;
+          const e      = Math.max(0.5, energy[i]);
+          const barLen = Math.min(e, R_MAX - R_INNER);
+          ctx.strokeStyle = `rgba(0,212,255,0.30)`;
+          ctx.lineWidth   = BAR_W;
+          ctx.beginPath();
+          ctx.moveTo(CX + Math.cos(angle) * R_INNER, CY + Math.sin(angle) * R_INNER);
+          ctx.lineTo(CX + Math.cos(angle) * (R_INNER + barLen), CY + Math.sin(angle) * (R_INNER + barLen));
+          ctx.stroke();
+        }
+      }
+
+      function loop() {
+        frame++;
+        tick();
+        draw();
+        requestAnimationFrame(loop);
+      }
+      loop();
+    })();
+  </script>
+
+</body>
+</html>

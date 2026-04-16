@@ -55,6 +55,14 @@ module.exports = {
                 js: './src/preload.ts',
               },
             },
+            {
+              html: './src/onboarding/onboarding.html',
+              js: './src/onboarding/onboarding.ts',
+              name: 'onboarding_window',
+              preload: {
+                js: './src/onboarding/onboarding-preload.ts',
+              },
+            },
           ],
         },
       },
