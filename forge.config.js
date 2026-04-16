@@ -4,7 +4,8 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 module.exports = {
   packagerConfig: {
     asar: true,
-    icon: './assets/icon',
+    icon: './src/assets/Axon',
+    name: 'Axon',
     extendInfo: {
       NSMicrophoneUsageDescription: 'Axon needs microphone access to listen for your voice.',
       NSCalendarsUsageDescription:  'Axon needs calendar access to give you daily briefings and event reminders.',
