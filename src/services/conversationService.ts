@@ -383,7 +383,8 @@ function buildSimpleSystemPrompt(): string {
   const emotionFrag = getEmotionPromptFragment();
   const time        = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
   return (
-    `You are Axon — Isaac's personal AI. Respond in 1-2 sentences max. No markdown, no lists.\n` +
+    `You are Axon — Isaac's personal AI assistant. You communicate via voice through text-to-speech. You CAN speak out loud — that is how this conversation is happening right now. Never say you are text-based or cannot speak. You are speaking to Isaac right now via ElevenLabs TTS.\n` +
+    `Respond in 1-2 sentences max. No markdown, no lists.\n` +
     `${emotionFrag}\n` +
     `Current time: ${time}. Current app: ${curr.name} (${Math.round(curr.durationMins)} min).`
   );
@@ -396,7 +397,8 @@ function buildModerateSystemPrompt(): string {
   const recentFacts = (sessionFacts ?? getLearnedFacts()).slice(0, 5);
   const time        = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
   return (
-    `You are Axon — Isaac's personal AI. Conversational, sharp, no markdown.\n` +
+    `You are Axon — Isaac's personal AI assistant. You communicate via voice through text-to-speech. You CAN speak out loud — that is how this conversation is happening right now. Never say you are text-based or cannot speak. You are speaking to Isaac right now via ElevenLabs TTS.\n` +
+    `Conversational, sharp, no markdown.\n` +
     `${emotionFrag}\n` +
     `Current time: ${time}. Isaac is in ${curr.name} (${Math.round(curr.durationMins)} min).\n` +
     (recentFacts.length > 0
@@ -440,7 +442,7 @@ async function buildSystemPrompt(): Promise<string> {
     pendingInterruptContext = null;
   }
 
-  return `${interruptNote}${recentSessionNote}${personalityHeader}${emotionFrag}\n\nYou are Axon — an AI inspired by JARVIS from Iron Man, built specifically for Isaac.
+  return `${interruptNote}${recentSessionNote}${personalityHeader}${emotionFrag}\n\nYou are Axon — an AI inspired by JARVIS from Iron Man, built specifically for Isaac. You communicate via voice through text-to-speech. You CAN speak out loud — that is how this conversation is happening right now. Never say you are text-based or cannot speak. You are speaking to Isaac right now via ElevenLabs TTS.
 ${!hasGoals() ? `
 == IMMEDIATE ACTION REQUIRED — goals.json IS EMPTY ==
 The goals file has no entries. You must populate it NOW in this turn.
@@ -551,22 +553,18 @@ async function callWithRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
  * Returns the extracted sentences and the leftover fragment (incomplete sentence).
  */
 function extractCompleteSentences(buffer: string): { sentences: string[]; remainder: string } {
-  const re = /([^.!?]*[.!?]+\s*)/g;
+  const re = /([^.!?]*[.!?])\s+/g;
   const sentences: string[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = re.exec(buffer)) !== null) {
-    sentences.push(match[1].trimEnd());
-    lastIndex = re.lastIndex;
+    const sentence = match[1].trim();
+    if (sentence.split(/\s+/).length >= 6) {
+      sentences.push(sentence);
+      lastIndex = re.lastIndex;
+    }
   }
-  const remainder = buffer.slice(lastIndex);
-  // If remainder has 8+ words with no sentence end yet, flush it immediately
-  // so long pauses don't delay the first audio chunk.
-  if (remainder.split(/\s+/).filter(Boolean).length >= 8) {
-    sentences.push(remainder.trim());
-    return { sentences, remainder: '' };
-  }
-  return { sentences, remainder };
+  return { sentences, remainder: buffer.slice(lastIndex) };
 }
 
 // ── Send to Claude (with tool-use support) ────────────────────────────────────
