@@ -1,6 +1,8 @@
 import { getCurrentApp, getProductivityScore, getSessionLog } from './windowMonitor';
 import { analyzeCurrentState }            from './patternEngine';
 import { startWeeklyReviewScheduler }     from './weeklyReview';
+import { getSoftLockState, activateSoftLock } from './softLockService';
+import { getWeeklyPlanForToday }          from './planningService';
 import {
   evaluate            as evaluateIntervention,
   setConversationTrigger,
@@ -25,6 +27,11 @@ const PATTERN_UPDATE_EVERY = 2;            // update today's pattern every 2 pol
 // ── Snooze state ───────────────────────────────────────────────────────────────
 
 let snoozeUntilMs = 0;
+
+// ── Weekly plan fire-once guards ───────────────────────────────────────────────
+
+let windDownWarningFiredDate  = '';  // YYYY-MM-DD
+let softLockAutoFiredDate     = '';  // YYYY-MM-DD
 
 /**
  * Silence all interventions until the given number of minutes have elapsed.
@@ -147,6 +154,78 @@ function refreshTodayPattern(): void {
   });
 }
 
+// ── Weekly plan timing checks ──────────────────────────────────────────────────
+// Runs each poll. Fires wind-down warning and auto soft-lock once per day.
+
+async function checkWeeklyPlanTiming(): Promise<void> {
+  // Don't interfere if a soft lock is already active
+  if (getSoftLockState()?.active) return;
+
+  const plan = getWeeklyPlanForToday();
+  if (!plan) return;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const now   = new Date();
+
+  // Parse a "HH:MM" time string into today's Date
+  function todayAt(hhmm: string): Date | null {
+    const [h, m] = hhmm.split(':').map(Number);
+    if (isNaN(h) || isNaN(m)) return null;
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return d;
+  }
+
+  // ── Wind-down warning ──────────────────────────────────────────────────────
+  if (plan.laptopWindDownTime && windDownWarningFiredDate !== today) {
+    const windDown = todayAt(plan.laptopWindDownTime);
+    if (windDown) {
+      const diffMs = windDown.getTime() - now.getTime();
+      // Warn once when within 10 minutes of wind-down time
+      if (diffMs >= 0 && diffMs <= 10 * 60_000) {
+        windDownWarningFiredDate = today;
+        console.log(`[DecisionEngine] wind-down warning — ${plan.laptopWindDownTime}`);
+        // Import speak lazily to avoid circular deps
+        try {
+          const { speak } = require('./elevenLabsService');
+          await speak(`Wind-down time in ${Math.ceil(diffMs / 60_000)} minutes. Start wrapping up.`);
+        } catch (e) {
+          console.warn('[DecisionEngine] wind-down speak failed:', e);
+        }
+      }
+    }
+  }
+
+  // ── Auto soft lock ────────────────────────────────────────────────────────
+  if (plan.softLockStart && softLockAutoFiredDate !== today) {
+    const lockStart = todayAt(plan.softLockStart);
+    if (lockStart) {
+      const diffMs = lockStart.getTime() - now.getTime();
+      // Warn 30 minutes before
+      if (diffMs > 0 && diffMs <= 30 * 60_000 && softLockAutoFiredDate !== `${today}-warn`) {
+        softLockAutoFiredDate = `${today}-warn`;
+        const diffMins = Math.ceil(diffMs / 60_000);
+        console.log(`[DecisionEngine] soft lock warning — ${diffMins}min until ${plan.softLockStart}`);
+        try {
+          const { speak } = require('./elevenLabsService');
+          await speak(`${diffMins} minutes until gym time. Start getting ready.`);
+        } catch (e) {
+          console.warn('[DecisionEngine] soft lock warn speak failed:', e);
+        }
+      }
+      // Auto-activate at soft lock start time (±5 min window)
+      if (Math.abs(diffMs) <= 5 * 60_000) {
+        softLockAutoFiredDate = today;
+        const end    = plan.softLockEnd ? todayAt(plan.softLockEnd) : null;
+        const durMs  = end ? end.getTime() - now.getTime() : 90 * 60_000;
+        const durMin = Math.max(1, Math.round(durMs / 60_000));
+        console.log(`[DecisionEngine] auto soft lock: gym time — ${durMin}min`);
+        await activateSoftLock('Gym time', durMin);
+      }
+    }
+  }
+}
+
 // ── Main poll ──────────────────────────────────────────────────────────────────
 
 async function poll(): Promise<void> {
@@ -174,7 +253,10 @@ async function poll(): Promise<void> {
     (screenCtx ? ` | screen: ${screenCtx}` : ''),
   );
 
-  // 5. Pass to intervention decider — skip if snoozed
+  // 5. Check today's weekly life plan for wind-down and soft lock timing
+  await checkWeeklyPlanTiming();
+
+  // 6. Pass to intervention decider — skip if snoozed
   if (isSnoozed()) {
     const remMins = Math.ceil((snoozeUntilMs - Date.now()) / 60_000);
     console.log(`[DecisionEngine] snoozed — skipping intervention (${remMins}min remaining)`);

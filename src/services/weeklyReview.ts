@@ -5,6 +5,7 @@ import { speak, isSpeaking }        from './elevenLabsService';
 import { setLastProactiveMessage } from './proactiveContext';
 import { route }          from './modelRouter';
 import { setInterventionGap } from './interventionDecider';
+import { generateWeeklyLifePlan } from './planningService';
 import {
   getRecentPatterns,
   getRecentInterventions,
@@ -37,6 +38,15 @@ async function checkAndRunIfDue(): Promise<void> {
   if (now.getDay() === 0 && now.getHours() >= 18 && today !== lastReviewDate) {
     lastReviewDate = today;
     await runWeeklyReview();
+    // Generate weekly life plan alongside the review
+    try {
+      const planSummary = await generateWeeklyLifePlan();
+      if (planSummary && !isSpeaking) {
+        await speak(planSummary);
+      }
+    } catch (e) {
+      console.warn('[WeeklyReview] life plan generation error:', e);
+    }
   }
 }
 

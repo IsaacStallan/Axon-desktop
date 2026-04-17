@@ -6,7 +6,9 @@ import fs from 'fs';
 import path from 'path';
 import { generateSoul } from './memoryService';
 import { addTask, getPendingTasks, markDone } from './taskStore';
-import { addGoal, getActiveGoals, updateGoal, type Goal } from './goalService';
+import { addGoal, getActiveGoals, updateGoal, getLifeGoals, logGoalActivity, type Goal } from './goalService';
+import { getWeeklyPlan } from './planningService';
+import { activateSoftLock, deactivateSoftLock, getSoftLockState } from './softLockService';
 import { addCommitment, getOpenCommitments, markDone as commitmentDone } from './commitmentTracker';
 import { getTodayEvents, formatEventTime } from './calendarService';
 import {
@@ -463,6 +465,56 @@ export const TOOLS: Anthropic.Tool[] = [
     },
   },
 
+  // ── Life goal activity ────────────────────────────────────────────────────────
+  {
+    name:        'goal_log_activity',
+    description: 'Log a completed life goal activity — gym session, run, sleep, social event, learning. ' +
+                 'Use when Isaac mentions going to the gym, finishing a run, completing a workout, ' +
+                 'going to bed on time, finishing a book chapter, or any health/life goal activity.',
+    input_schema: {
+      type:       'object',
+      properties: {
+        goal_number:       { type: 'number', description: '1-based position from goal_list (pick the most relevant life goal)' },
+        duration_minutes:  { type: 'number', description: 'Duration of the activity in minutes (optional)' },
+      },
+      required: ['goal_number'],
+    },
+  },
+
+  // ── Weekly life plan ──────────────────────────────────────────────────────────
+  {
+    name:        'get_weekly_plan',
+    description: 'Read the current weekly life plan — gym times, deep work windows, wind-down schedule, soft lock times. ' +
+                 'Use when Isaac asks about his schedule, when to train, or when Axon needs to reference today\'s plan.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+
+  // ── Soft lock ─────────────────────────────────────────────────────────────────
+  {
+    name:        'activate_soft_lock',
+    description: 'Lock Isaac out of his computer — hides all windows and shows the soft lock screen. ' +
+                 'Use when Isaac says "lock me out", "I\'m going to train", "time to go", or when ' +
+                 'the weekly plan says it\'s gym/sleep time. Always confirm the reason and duration first.',
+    input_schema: {
+      type:       'object',
+      properties: {
+        reason:           { type: 'string', description: 'Reason for the lock, e.g. "Gym time", "Wind down", "Sleep"' },
+        duration_minutes: { type: 'number', description: 'How long to lock in minutes' },
+      },
+      required: ['reason', 'duration_minutes'],
+    },
+  },
+  {
+    name:        'deactivate_soft_lock',
+    description: 'Unlock the computer and restore all windows. Use when Isaac has returned from his commitment.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name:        'get_soft_lock_state',
+    description: 'Check whether a soft lock is currently active, how long remains, and what it was for.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+
   // ── Sub-agent orchestration ───────────────────────────────────────────────────
   {
     name:        'spawn_agents',
@@ -906,6 +958,74 @@ export async function executeTool(
           return `Completed in ${result.attempts} attempt(s).${result.savedTo ? ` Saved to ${result.savedTo}.` : ''}\nOutput: ${result.output.slice(0, 300)}`;
         }
         return `Failed after ${result.attempts} attempt(s): ${result.error?.slice(0, 300) ?? 'unknown error'}`;
+      }
+
+      // ── Life goal activity ─────────────────────────────────────────────────────
+
+      case 'goal_log_activity': {
+        const lifeGoals = getLifeGoals();
+        const idx       = Math.round(Number(input.goal_number)) - 1;
+        if (idx < 0 || idx >= lifeGoals.length) {
+          // Fall back to all active goals if index is out of life-goal range
+          const allGoals = getActiveGoals();
+          if (idx < 0 || idx >= allGoals.length) return `No goal at position ${input.goal_number}.`;
+          const dur = input.duration_minutes ? Number(input.duration_minutes) : undefined;
+          logGoalActivity(allGoals[idx].id, dur);
+          return `Activity logged for "${allGoals[idx].text}"${dur ? ` (${dur} min)` : ''}.`;
+        }
+        const dur = input.duration_minutes ? Number(input.duration_minutes) : undefined;
+        logGoalActivity(lifeGoals[idx].id, dur);
+        return `Activity logged for "${lifeGoals[idx].text}"${dur ? ` (${dur} min)` : ''}.`;
+      }
+
+      // ── Weekly life plan ───────────────────────────────────────────────────────
+
+      case 'get_weekly_plan': {
+        const plan = getWeeklyPlan();
+        if (!plan) return 'No weekly plan generated yet. It runs automatically every Sunday at 6pm, or ask me to generate one.';
+        const today = new Date().toISOString().slice(0, 10);
+        const todayPlan = plan.days.find(d => d.date === today);
+        const lines: string[] = [`Weekly plan (${plan.weekStarting}):`, ''];
+        if (todayPlan) {
+          lines.push(`Today (${today}):`);
+          lines.push(`  Deep work: ${todayPlan.deepWorkWindow}`);
+          if (todayPlan.gymOrRunTime) lines.push(`  Gym/run: ${todayPlan.gymOrRunTime}`);
+          lines.push(`  Wind-down: ${todayPlan.laptopWindDownTime}`);
+          if (todayPlan.softLockStart) lines.push(`  Soft lock: ${todayPlan.softLockStart}–${todayPlan.softLockEnd ?? '?'}`);
+          if (todayPlan.notes) lines.push(`  Notes: ${todayPlan.notes}`);
+          lines.push('');
+        }
+        lines.push('Weekly goals:');
+        for (const g of plan.weeklyGoals) lines.push(`  - ${g}`);
+        return lines.join('\n');
+      }
+
+      // ── Soft lock ──────────────────────────────────────────────────────────────
+
+      case 'activate_soft_lock': {
+        const reason   = (input.reason ?? 'Focus time').trim();
+        const duration = Math.max(1, Math.round(Number(input.duration_minutes) || 30));
+        await activateSoftLock(reason, duration);
+        return `Soft lock activated: "${reason}" for ${duration} minutes.`;
+      }
+
+      case 'deactivate_soft_lock': {
+        await deactivateSoftLock();
+        return 'Soft lock deactivated — windows restored.';
+      }
+
+      case 'get_soft_lock_state': {
+        const state = getSoftLockState();
+        if (!state || !state.active) return 'No soft lock is currently active.';
+        const remaining = Math.max(0, new Date(state.endTime).getTime() - Date.now());
+        const remMins   = Math.ceil(remaining / 60_000);
+        return (
+          `Soft lock active: "${state.reason}"\n` +
+          `Started: ${new Date(state.startTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}\n` +
+          `Ends: ${new Date(state.endTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })} ` +
+          `(${remMins} min remaining)\n` +
+          `Override used: ${state.overrideUsed ? 'yes' : 'no'}`
+        );
       }
 
       default:

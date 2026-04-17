@@ -5,17 +5,39 @@ import * as cloudSync from './cloudSync';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export type GoalCategory =
+  | 'business'
+  | 'financial'
+  | 'health'
+  | 'fitness'
+  | 'social'
+  | 'sleep'
+  | 'learning'
+  | 'personal'
+  | 'other';
+
+export interface GoalFrequency {
+  timesPerWeek?:   number;       // e.g. gym 3x/week
+  timesPerDay?:    number;       // e.g. drink water 8x/day
+  preferredTimes?: string[];     // e.g. ['17:30', '07:00']
+  preferredDays?:  string[];     // e.g. ['monday', 'wednesday', 'friday']
+}
+
 export interface Goal {
-  id:          string;
-  text:        string;
-  category:    'financial' | 'business' | 'personal' | 'health' | 'other';
-  impactScore: number;   // 1–10, higher = more critical to Isaac's mission
-  timeHorizon: 'this week' | 'this month' | 'this year' | 'life';
-  addedAt:     string;
-  updatedAt:   string;
-  status:      'active' | 'achieved' | 'paused';
-  notes:       string;
-  progress:    number;   // 0–100, actual completion percentage
+  id:                       string;
+  text:                     string;
+  category:                 GoalCategory;
+  impactScore:              number;   // 1–10, higher = more critical to Isaac's mission
+  timeHorizon:              'this week' | 'this month' | 'this year' | 'life';
+  addedAt:                  string;
+  updatedAt:                string;
+  status:                   'active' | 'achieved' | 'paused';
+  notes:                    string;
+  progress:                 number;   // 0–100, actual completion percentage
+  frequency?:               GoalFrequency;
+  lastCompleted?:           string;   // ISO timestamp
+  completionsThisWeek?:     number;
+  targetMinutesPerSession?: number;   // e.g. 60 for gym sessions
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────────
@@ -40,7 +62,7 @@ function writeAll(goals: Goal[]): void {
 
 export function addGoal(
   text:        string,
-  category:    Goal['category']    = 'other',
+  category:    GoalCategory = 'other',
   impactScore: number              = 5,
   timeHorizon: Goal['timeHorizon'] = 'this year',
   notes        = '',
@@ -109,4 +131,52 @@ export function getGoalsText(): string {
   return goals
     .map((g, i) => `${i + 1}. [impact ${g.impactScore}/10 · ${g.timeHorizon}] ${g.text}`)
     .join('\n');
+}
+
+/**
+ * Returns active goals in life categories: health, fitness, social, sleep.
+ */
+export function getLifeGoals(): Goal[] {
+  const LIFE_CATS: GoalCategory[] = ['health', 'fitness', 'social', 'sleep'];
+  return readAll()
+    .filter(g => g.status === 'active' && LIFE_CATS.includes(g.category))
+    .sort((a, b) => b.impactScore - a.impactScore);
+}
+
+/**
+ * Records a completion for a goal.
+ * Resets completionsThisWeek every Monday at midnight.
+ */
+export function logGoalActivity(goalId: string, durationMinutes?: number): boolean {
+  const goals = readAll();
+  const goal  = goals.find(g => g.id === goalId);
+  if (!goal) return false;
+
+  const now    = new Date();
+  const monday = new Date();
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7)); // ISO Monday
+
+  // Reset weekly counter if last completion was before this Monday
+  if (!goal.lastCompleted || new Date(goal.lastCompleted) < monday) {
+    goal.completionsThisWeek = 0;
+  }
+
+  goal.lastCompleted       = now.toISOString();
+  goal.completionsThisWeek = (goal.completionsThisWeek ?? 0) + 1;
+  goal.updatedAt           = now.toISOString();
+
+  // Bump progress toward target if frequency is configured
+  if (goal.frequency?.timesPerWeek) {
+    const pct = Math.min(100, Math.round((goal.completionsThisWeek / goal.frequency.timesPerWeek) * 100));
+    goal.progress = pct;
+  }
+
+  writeAll(goals);
+  console.log(
+    `[Goals] activity logged for "${goal.text}" ` +
+    `(${durationMinutes ?? 0}min, ${goal.completionsThisWeek}x this week)`,
+  );
+  cloudSync.pushGoal({ text: goal.text, impactScore: goal.impactScore, timeHorizon: goal.timeHorizon });
+  return true;
 }

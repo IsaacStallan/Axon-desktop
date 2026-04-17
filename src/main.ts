@@ -74,6 +74,7 @@ if (!gotLock) {
 // ── Globals ─────────────────────────────────────────────────────────────────
 let orbWindow:        BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
+let softlockWindow:   BrowserWindow | null = null;
 let tray:             Tray | null = null;
 let isConversing  = false;
 let updateReady   = false;
@@ -82,6 +83,8 @@ declare const ORB_WINDOW_WEBPACK_ENTRY: string;
 declare const ORB_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 declare const ONBOARDING_WINDOW_WEBPACK_ENTRY: string;
 declare const ONBOARDING_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+declare const SOFTLOCK_WINDOW_WEBPACK_ENTRY: string;
+declare const SOFTLOCK_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 // ── Create the floating orb window ──────────────────────────────────────────
 function createOrbWindow(): BrowserWindow {
@@ -123,6 +126,36 @@ function createOrbWindow(): BrowserWindow {
     win.hide();
   });
 
+  return win;
+}
+
+// ── Soft lock window ─────────────────────────────────────────────────────────
+
+function createSoftlockWindow(): BrowserWindow {
+  const { width, height } = screen.getPrimaryDisplay().bounds;
+  const win = new BrowserWindow({
+    width,
+    height,
+    x:           0,
+    y:           0,
+    frame:       false,
+    resizable:   false,
+    movable:     false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    fullscreen:  true,
+    show:        false,
+    webPreferences: {
+      preload:          SOFTLOCK_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      contextIsolation: true,
+      nodeIntegration:  false,
+    },
+  });
+  win.loadURL(SOFTLOCK_WINDOW_WEBPACK_ENTRY);
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.webContents.on('console-message', (_event, _level, message) => {
+    console.log('[SoftlockRenderer]', message);
+  });
   return win;
 }
 
@@ -447,6 +480,37 @@ app.on('second-instance', () => {
   }
 });
 
+// ── Soft lock IPC handlers ────────────────────────────────────────────────────
+
+ipcMain.handle('softlock:going', async () => {
+  const { deactivateSoftLock } = require('./services/softLockService');
+  await deactivateSoftLock();
+  // Give a moment for windows to restore, then start a check-in conversation
+  setTimeout(() => {
+    if (!isConversing) beginConversation();
+  }, 2000);
+});
+
+ipcMain.handle('softlock:override', async () => {
+  try {
+    await (elevenLabsSpeak as (t: string) => Promise<void>)(
+      'Say "override" to unlock your computer.',
+    );
+    const transcript = await (whisperTranscribe as (s: number) => Promise<string>)(8);
+    const confirmed  = /\boverride\b/i.test(transcript);
+    if (confirmed) {
+      const { logSoftLockOverride, deactivateSoftLock } = require('./services/softLockService');
+      logSoftLockOverride();
+      await deactivateSoftLock();
+      return 'override_confirmed';
+    }
+    return 'override_denied';
+  } catch (e) {
+    console.warn('[SoftLock] override IPC error:', e);
+    return 'override_denied';
+  }
+});
+
 // ── Full Axon startup ─────────────────────────────────────────────────────────
 // Called either directly from ready (if onboarding already done)
 // or from the onboarding:complete IPC handler.
@@ -465,6 +529,33 @@ function startFullAxon(): void {
     setTimeout(() => sendStats(), 4000);
     setInterval(sendStats, 30_000);
     if (!tray) tray = createTray();
+    // Wire soft lock callbacks
+    const { setSoftLockCallbacks } = require('./services/softLockService');
+    setSoftLockCallbacks(
+      (state: { reason: string; startTime: string; endTime: string; canOverride: boolean; overrideUsed: boolean }) => {
+        // onActivate — show the soft lock window
+        if (!softlockWindow || softlockWindow.isDestroyed()) {
+          softlockWindow = createSoftlockWindow();
+        }
+        softlockWindow.show();
+        // Send state to renderer once it's ready
+        softlockWindow.webContents.once('did-finish-load', () => {
+          softlockWindow?.webContents.send('softlock:state', state);
+        });
+        // If already loaded, send immediately too
+        softlockWindow.webContents.send('softlock:state', state);
+        console.log('[Main] soft lock window shown');
+      },
+      () => {
+        // onDeactivate — hide and destroy the soft lock window
+        if (softlockWindow && !softlockWindow.isDestroyed()) {
+          softlockWindow.destroy();
+          softlockWindow = null;
+        }
+        console.log('[Main] soft lock window closed');
+      },
+    );
+
     startWindowMonitor();
     startDecisionLoop(beginConversation);
     startBriefingService(beginConversation);

@@ -63,6 +63,14 @@ module.exports = {
                 js: './src/onboarding/onboarding-preload.ts',
               },
             },
+            {
+              html: './src/softlock/softlock.html',
+              js: './src/softlock/softlock.ts',
+              name: 'softlock_window',
+              preload: {
+                js: './src/softlock/softlock-preload.ts',
+              },
+            },
           ],
         },
       },
