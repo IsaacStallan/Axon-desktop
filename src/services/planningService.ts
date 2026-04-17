@@ -8,6 +8,7 @@ import type { Goal }          from './goalService';
 import { getActiveGoals, getLifeGoals } from './goalService';
 import type { Commitment }    from './commitmentTracker';
 import { getRecentPatterns, getTypicalDriftWindows } from './behaviourModel';
+import { ARETICA_VISION } from './areticaVision';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
 
@@ -107,6 +108,11 @@ export async function generateWeeklyLifePlan(): Promise<string> {
     : 120;
 
   const system = `You are Axon — Isaac's AI. Generate a structured 7-day weekly plan as JSON.
+
+${ARETICA_VISION}
+
+This plan is built around the Aretica vision — not preferences, not comfort. Every scheduled block should move Isaac closer to his fullest self. Deep work windows protect his peak output hours. Gym times honour his commitment to physical capability. Wind-down and soft lock times enforce the discipline he has already said he wants.
+
 
 Isaac's known patterns:
 - Peak focus: 9am–1pm (Tuesday/Wednesday strongest)

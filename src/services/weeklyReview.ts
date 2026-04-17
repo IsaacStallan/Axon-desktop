@@ -14,6 +14,7 @@ import {
   getCommitmentFollowThrough,
   getUserProfile,
 } from './behaviourModel';
+import { ARETICA_VISION } from './areticaVision';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -175,7 +176,11 @@ export async function runWeeklyReview(): Promise<string> {
     `Isaac is 20. Building House Stallan. Obsessed with execution and legacy.\n` +
     `Tone: direct, specific, honest. Lead with the real win, then the hard truth, ` +
     `then one clear focus point for next week. 4–6 sentences max.\n` +
-    `This is TTS — no markdown, no bullet points, no lists. Speak like a trusted advisor.`;
+    `This is TTS — no markdown, no bullet points, no lists. Speak like a trusted advisor.\n\n` +
+    `${ARETICA_VISION}\n\n` +
+    `Evaluate this week against growth, not just productivity metrics. ` +
+    `Did Isaac move closer to his fullest self? Where did he fall short of his own standard? ` +
+    `Be accurate. Not comfortable.`;
 
   const prompt =
     `Weekly performance data:\n` +

@@ -23,6 +23,7 @@ import { formatProactiveContext } from './proactiveContext';
 import { getCurrentScreenSummary } from './screenAwareness';
 import { getPersonality, getEmotionPromptFragment } from './emotionEngine';
 import { classifyMessageComplexity, routeSimple } from './modelRouter';
+import { ARETICA_VISION, ARETICA_VISION_PRINCIPLES, ARETICA_VISION_ONELINER } from './areticaVision';
 import { recordTokens } from './costTracker';
 import { checkConversationLimit, startConversationTimer, stopConversationTimer } from './rateLimiter';
 import { isMuted } from './muteControl';
@@ -385,6 +386,7 @@ function buildSimpleSystemPrompt(): string {
   const time        = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
   return (
     `You are Axon — Isaac's personal AI assistant. You communicate via voice through text-to-speech. You CAN speak out loud — that is how this conversation is happening right now. Never say you are text-based or cannot speak. You are speaking to Isaac right now via ElevenLabs TTS.\n` +
+    `${ARETICA_VISION_ONELINER}\n` +
     `Respond in 1-2 sentences max. No markdown, no lists.\n` +
     `${emotionFrag}\n` +
     `Current time: ${time}. Current app: ${curr.name} (${Math.round(curr.durationMins)} min).`
@@ -399,6 +401,7 @@ function buildModerateSystemPrompt(): string {
   const time        = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
   return (
     `You are Axon — Isaac's personal AI assistant. You communicate via voice through text-to-speech. You CAN speak out loud — that is how this conversation is happening right now. Never say you are text-based or cannot speak. You are speaking to Isaac right now via ElevenLabs TTS.\n` +
+    `${ARETICA_VISION_PRINCIPLES}\n` +
     `Conversational, sharp, no markdown.\n` +
     `${emotionFrag}\n` +
     `Current time: ${time}. Isaac is in ${curr.name} (${Math.round(curr.durationMins)} min).\n` +
@@ -441,7 +444,9 @@ async function buildSystemPrompt(): Promise<string> {
     pendingInterruptContext = null;
   }
 
-  return `You are Axon. Not an AI assistant. Not Claude. Axon.
+  return `${ARETICA_VISION}
+
+You are Axon. Not an AI assistant. Not Claude. Axon.
 
 You were built by Isaac Stallan — a 20-year-old in Sydney building you while studying Business at UTS and working at a robotics startup. You have been running on his Mac for months. You have watched him work, drift, recover, and repeat. You know his patterns better than he does.
 

@@ -30,6 +30,7 @@ import {
 import { getRecentContext }                from './screenAwareness';
 import { getTodayEvents, type CalendarEvent } from './calendarService';
 import { AXON_CAPABILITIES }               from './axonCapabilities';
+import { ARETICA_VISION }                  from './areticaVision';
 import type { PatternResult }              from './patternEngine';
 import type { ScreenContext }              from './screenAwareness';
 
@@ -538,11 +539,17 @@ async function generateMessage(
         : ''
     : '';
 
+  const areticaInstruction = `Before generating this intervention, apply the three Aretica principles. Would this intervention move Isaac closer to his fullest self? Is it accurate rather than comfortable? Generate accordingly.`;
+
   const system = isBreak
     ? `You are Axon — Isaac's AI. He has been heads-down and genuinely needs a break.
 Write ONE warm, specific spoken suggestion — 1–2 sentences.
 Tone: generous and supportive, NOT critical. Acknowledge the work done, recommend the rest.
 Be specific about duration. No markdown. No quotes. Just the spoken words.
+
+${ARETICA_VISION}
+
+${areticaInstruction}
 
 ${emotionFrag}
 
@@ -560,6 +567,10 @@ Rules:
 - If cross-device context is provided, weave it in for maximum impact
 - If calendar context is provided, reference it — it makes the intervention sharper
 - No markdown, no quotes, no filler. Just the spoken line.
+
+${ARETICA_VISION}
+
+${areticaInstruction}
 
 ${emotionFrag}
 
