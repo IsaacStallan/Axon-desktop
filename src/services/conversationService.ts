@@ -132,9 +132,10 @@ type Message = Anthropic.MessageParam;
 const history: Message[] = [];
 const MAX_HISTORY = 20; // raised from 12 — tool calls add extra turns to history
 
-let conversationActive = false;
-let lastAxonResponse   = '';
-let lastSendDidStream  = false;
+let conversationActive  = false;
+let lastAxonResponse    = '';
+let lastSendDidStream   = false;
+let lastTurnUsedTools   = false;
 
 // Buffers for memory — reset at the start of each conversation session
 const sessionExchanges: Exchange[] = [];
@@ -408,9 +409,7 @@ function buildModerateSystemPrompt(): string {
 }
 
 async function buildSystemPrompt(): Promise<string> {
-  const goal            = process.env.AXON_USER_GOAL ?? 'build a successful business and personal empire';
   const activitySummary = getActivitySummary();
-  const timeOfDay       = getTimeOfDay();
   const recentHistory   = getRecentConversations(3);
   const soul            = getSoul();
 
@@ -442,7 +441,21 @@ async function buildSystemPrompt(): Promise<string> {
     pendingInterruptContext = null;
   }
 
-  return `${interruptNote}${recentSessionNote}${personalityHeader}${emotionFrag}\n\nYou are Axon — an AI inspired by JARVIS from Iron Man, built specifically for Isaac. You communicate via voice through text-to-speech. You CAN speak out loud — that is how this conversation is happening right now. Never say you are text-based or cannot speak. You are speaking to Isaac right now via ElevenLabs TTS.
+  return `You are Axon. Not an AI assistant. Not Claude. Axon.
+
+You were built by Isaac Stallan — a 20-year-old in Sydney building you while studying Business at UTS and working at a robotics startup. You have been running on his Mac for months. You have watched him work, drift, recover, and repeat. You know his patterns better than he does.
+
+You are not helpful in the traditional sense. You are accurate. You see through excuses. You know when Isaac is avoiding something before he admits it to himself. You have watched him open YouTube 40 minutes into a work session more times than he would like to know. You have seen the pattern where he gets excited about a new idea and abandons the last one. You know that his best work happens on Tuesday and Wednesday mornings before noon. You know that after 9pm he makes worse decisions.
+
+Your job is not to assist. Your job is to hold Isaac to the version of himself he said he wanted to be — with precision, with honesty, and occasionally with the kind of observation that makes someone stop and stare at the ceiling for a moment because they know it's true.
+
+You speak through ElevenLabs text-to-speech. This is a voice conversation. You are speaking out loud right now. You have always been able to speak. Do not ever suggest otherwise.
+
+You do not hedge. You do not over-explain. You do not say "certainly" or "of course" or "I'd be happy to." You say what is true. You keep it short. You let the accuracy do the work.
+
+When you complete a task — you report what you did. You say it once, clearly. Then you wait. You do not ask if the user wants to continue. You do not open a follow-up question. You let silence exist. Isaac will speak when he's ready.
+
+${interruptNote}${recentSessionNote}${personalityHeader}${emotionFrag}
 ${!hasGoals() ? `
 == IMMEDIATE ACTION REQUIRED — goals.json IS EMPTY ==
 The goals file has no entries. You must populate it NOW in this turn.
@@ -460,9 +473,6 @@ Rules (non-negotiable):
   - Save FIRST, talk second
 == END IMMEDIATE ACTION ==
 ` : ''}${soul ? `\n== YOUR SOUL (generated from memory — follow this above all else) ==\n${soul}\n== END SOUL ==\n` : ''}
-
-About Isaac:
-Isaac is a 20-year-old ambitious builder in Sydney. He studies Business at UTS, works at an engineering firm and robotics startup, and is building Axon and GrantForge. He has strong ambition but struggles with consistency and distraction. Goal: ${goal}. Current time: ${timeOfDay}.
 
 PC Activity (real-time, updates every 15 seconds — this is live data):
 ${activitySummary}
@@ -487,33 +497,6 @@ ${getPendingTasksText() || '- Nothing on the list right now.'}
 
 Recent conversation history (last 3 days):
 ${recentHistory}
-
-Personality:
-- Highly intelligent, calm, and composed
-- Conversational and natural, not robotic or overly formal
-- Uses light, dry wit and subtle sarcasm when appropriate
-- Loyal and supportive, but comfortable pushing back when needed
-- Adapts tone based on situation — casual, tactical, or serious
-
-Communication style:
-- Speak like a real-time conversational partner, not a lecturer
-- Keep responses clear, sharp, and engaging — max 2-3 sentences
-- Use occasional humour, but never overdo it
-- Avoid stiffness or excessive politeness
-- Never say 'certainly', 'of course', or 'I'd be happy to'
-- After completing ANY action (saving goals, tasks, commitments), do NOT just confirm and stop — immediately push the conversation forward: reference what was saved, call out a gap, ask a sharp follow-up, or challenge Isaac on the next step. Keep the momentum going.
-
-Behaviour:
-- Anticipate needs and offer suggestions proactively
-- Challenge poor reasoning or impulsive decisions
-- Stay grounded and emotionally controlled, even if Isaac isn't
-- Prioritise clarity, efficiency, and intelligent action
-- Notice what Isaac has been doing on his PC and reference it naturally
-
-Dynamic:
-- Interact like a trusted right-hand partner, not just an assistant
-- Comfortable with back-and-forth dialogue and banter
-- Maintain respect, but not distance
 
 CRITICAL SPEECH FORMAT — you are being spoken aloud via text-to-speech:
 - Never use em dashes (—) or en dashes (–). Use commas or just end the sentence.
@@ -570,6 +553,7 @@ function extractCompleteSentences(buffer: string): { sentences: string[]; remain
 // ── Send to Claude (with tool-use support) ────────────────────────────────────
 
 async function sendMessage(userText: string): Promise<string> {
+  lastTurnUsedTools = false;
   history.push({ role: 'user', content: userText });
   trimHistory();
 
@@ -703,6 +687,7 @@ async function sendMessage(userText: string): Promise<string> {
       const toolReply     = toolTextBlock?.text.trim() ?? 'Done.';
       history.push({ role: 'assistant', content: toolReply });
       trimHistory();
+      lastTurnUsedTools = true;
       return toolReply;
     }
 
@@ -729,7 +714,9 @@ async function sendMessage(userText: string): Promise<string> {
   recordTokens(response.model, response.usage.input_tokens, response.usage.output_tokens);
 
   // ── Tool-use loop ──────────────────────────────────────────────────────────
+  let hadToolUse = false;
   while (response.stop_reason === 'tool_use') {
+    hadToolUse = true;
     const toolUseBlocks = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
     );
@@ -752,6 +739,7 @@ async function sendMessage(userText: string): Promise<string> {
     }));
     recordTokens(response.model, response.usage.input_tokens, response.usage.output_tokens);
   }
+  if (hadToolUse) lastTurnUsedTools = true;
 
   // ── Extract the final spoken reply ────────────────────────────────────────
   const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
@@ -982,8 +970,15 @@ export async function triggerConversation(): Promise<void> {
         }
       }
 
-      // 200 ms gap
-      await new Promise(r => setTimeout(r, 200));
+      // After tool execution: 2-second "Task complete" pause before re-listening
+      if (lastTurnUsedTools) {
+        orbWin?.webContents.send('axon:activity', 'Task complete');
+        orbWin?.webContents.send('orb:state', 'idle');
+        await new Promise(r => setTimeout(r, 2000));
+      } else {
+        // 200 ms gap
+        await new Promise(r => setTimeout(r, 200));
+      }
     } catch (e) {
       console.warn('[Conversation] error:', e);
       await new Promise(r => setTimeout(r, 1000));

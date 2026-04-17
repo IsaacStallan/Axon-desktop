@@ -10,6 +10,7 @@ import {
   logOverride,
   updateInterventionOutcome,
   getRecentInterventions,
+  getPatternForCurrentContext,
   type InterventionRecord,
 } from './behaviourModel';
 import { executeEnvironmentalAction }      from './environmentalControl';
@@ -566,6 +567,16 @@ ${framing.instruction}
 
 ${AXON_CAPABILITIES}`;
 
+  const behaviourPattern = getPatternForCurrentContext();
+  const patternCtx = !isBreak
+    ? `\nBehavioural pattern context:\n` +
+      `- Isaac has opened ${behaviourPattern.currentApp} ${behaviourPattern.occurrenceCount} times in similar conditions\n` +
+      `- Last ${Math.max(0, behaviourPattern.occurrenceCount - 1)} times this happened at this time of day, he stayed in this app for an average of ${behaviourPattern.avgDriftMinutes} minutes\n` +
+      `- The app he was in before this was ${behaviourPattern.previousApp} for ${behaviourPattern.previousAppMinutes} minutes\n` +
+      `- This pattern occurs most on ${behaviourPattern.commonDays}\n` +
+      `Reference this specific pattern in your intervention. Not generically — specifically. "You opened ${behaviourPattern.currentApp} ${behaviourPattern.previousAppMinutes} minutes after closing ${behaviourPattern.previousApp}. That's happened ${behaviourPattern.occurrenceCount} times this week." That level of accuracy.`
+    : '';
+
   const user = isBreak
     ? `Isaac has been focused for ${Math.round(pattern.continuousFocusMins)} minutes straight.
 Current app: ${curr.name}
@@ -575,7 +586,7 @@ Write the break suggestion.`
 Drift probability: ${pattern.driftProbability}% — ${pattern.reason}
 Time: ${hour}:00
 Goals:\n${goals || '(none set)'}
-${commits ? `Open commitments:\n${commits}` : ''}${crossDeviceCtx}${screenDetail}${calendarHint}
+${commits ? `Open commitments:\n${commits}` : ''}${crossDeviceCtx}${screenDetail}${calendarHint}${patternCtx}
 Write the intervention.`;
 
   console.log(`[InterventionDecider] techniques: ${framing.techniques.join(', ')}`);

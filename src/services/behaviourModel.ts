@@ -478,3 +478,74 @@ export function getCommitmentFollowThrough(): number | null {
 
   return Math.round((recent.filter(c => c.completedAt !== null).length / recent.length) * 100);
 }
+
+// ── Predictive pattern context ─────────────────────────────────────────────────
+
+export interface BehaviourPattern {
+  currentApp:          string;
+  occurrenceCount:     number;
+  avgDriftMinutes:     number;
+  previousApp:         string;
+  previousAppMinutes:  number;
+  commonDays:          string;
+}
+
+/**
+ * Returns a behavioural pattern snapshot for the current app context.
+ * Calculated from the last 30 days of app_sessions.json.
+ */
+export function getPatternForCurrentContext(): BehaviourPattern {
+  const sessions = getRecentAppSessions(30);
+
+  if (sessions.length === 0) {
+    return { currentApp: 'unknown', occurrenceCount: 0, avgDriftMinutes: 0, previousApp: 'unknown', previousAppMinutes: 0, commonDays: 'unknown' };
+  }
+
+  const latestSession = sessions[sessions.length - 1];
+  const currentApp    = latestSession.app;
+  const currentHour   = new Date(latestSession.startTime).getHours();
+
+  // Sessions in the same app at a similar time of day (±2 hours)
+  const similarSessions = sessions.filter(s => {
+    const hour = new Date(s.startTime).getHours();
+    return s.app === currentApp && Math.abs(hour - currentHour) <= 2;
+  });
+
+  const occurrenceCount = similarSessions.length;
+
+  // Average drift duration from distraction sessions
+  const distractionSessions = similarSessions.filter(s => s.wasDistraction);
+  let avgDriftMinutes = 0;
+  if (distractionSessions.length > 0) {
+    const totalMins = distractionSessions.reduce((sum, s) => {
+      const ms = new Date(s.endTime).getTime() - new Date(s.startTime).getTime();
+      return sum + ms / 60_000;
+    }, 0);
+    avgDriftMinutes = Math.round(totalMins / distractionSessions.length);
+  }
+
+  // Previous app session
+  const currentIdx       = sessions.indexOf(latestSession);
+  const previousSession  = currentIdx > 0 ? sessions[currentIdx - 1] : null;
+  const previousApp      = previousSession?.app ?? 'unknown';
+  const previousAppMinutes = previousSession
+    ? Math.round((new Date(previousSession.endTime).getTime() - new Date(previousSession.startTime).getTime()) / 60_000)
+    : 0;
+
+  // Days of week this pattern most commonly occurs
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayCounts = new Array(7).fill(0) as number[];
+  for (const s of similarSessions) {
+    dayCounts[new Date(s.startTime).getDay()]++;
+  }
+  const maxCount  = Math.max(...dayCounts);
+  const commonDays = maxCount === 0
+    ? 'unknown'
+    : dayCounts
+        .map((count, day) => ({ day, count }))
+        .filter(({ count }) => count >= maxCount * 0.6)
+        .map(({ day }) => DAY_NAMES[day])
+        .join(', ');
+
+  return { currentApp, occurrenceCount, avgDriftMinutes, previousApp, previousAppMinutes, commonDays };
+}
