@@ -256,6 +256,15 @@ export function analyzeCurrentState(): PatternResult {
 
   const reason = reasons.length > 0 ? reasons.join(', ') : 'nominal';
 
+  // Drift score diagnostics — log every analysis so drift pipeline is auditable
+  const thresholds = { predictive: 60, early: 70, recovery: 85 };
+  const willFire   = finalDrift >= thresholds.predictive;
+  console.log(
+    `[PatternEngine] app: ${curr.name} (${curr.label}), drift score: ${finalDrift}, ` +
+    `tier: ${tier}, threshold: predictive ${thresholds.predictive} / early ${thresholds.early} / recovery ${thresholds.recovery}, ` +
+    `firing: ${willFire ? 'yes (if gap elapsed)' : 'no'} — ${reason}`,
+  );
+
   return {
     driftProbability:          finalDrift,
     breakRecommended,

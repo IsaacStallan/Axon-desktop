@@ -11,6 +11,7 @@ import {
   acquireSpeakerLock,
   releaseSpeakerLock,
 } from './deviceCoordinator';
+import { ARETICA_VISION } from './areticaVision';
 
 console.log('[ScreenObserver] module loaded');
 
@@ -31,7 +32,13 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
 let orbWin: BrowserWindow | null = null;
 let lastKnownMode: ActivityMode  = 'idle';
 let lastCommentTime              = 0;
-const COMMENT_COOLDOWN_MS        = 5 * 60_000;  // 5 min between unprompted comments
+const COMMENT_COOLDOWN_MS        = 90_000;       // 90 seconds between unprompted comments
+
+// Reading detection — tracks stable productive content
+let productiveContentHash   = 0;
+let productiveContentStart  = 0;
+let readingCheckFired       = false;
+let lastProductiveHash      = 0;   // detect significant content change
 
 export function setOrbWindow(win: BrowserWindow): void {
   orbWin = win;
@@ -181,14 +188,15 @@ async function evaluateProactiveComment(ctx: ScreenContext): Promise<void> {
       messages: [{
         role:    'user',
         content:
-          `The user's screen just changed to show: ${ctx.activeApp} — ${ctx.activity}.\n` +
-          (ctx.visibleContent ? `Visible content: ${ctx.visibleContent.slice(0, 200)}\n` : '') +
+          `${ARETICA_VISION}\n\n` +
+          `You are Axon watching Isaac's screen. You just saw: ${ctx.activeApp} — ${ctx.activity}.\n` +
+          (ctx.visibleContent ? `Visible content: ${ctx.visibleContent.slice(0, 300)}\n` : '') +
           (ctx.notes ? `Notes: ${ctx.notes}\n` : '') +
-          `\nIs there anything genuinely useful to say right now? ` +
-          `Only respond if there's something specific and valuable — an observation, a useful reminder, ` +
-          `a relevant fact, or a heads-up that would actually help. ` +
-          `Keep it 1–2 natural spoken sentences. ` +
-          `If nothing worth saying, respond with exactly "SKIP".`,
+          `\nApply the Aretica Vision test: would commenting right now move Isaac closer to his fullest self?\n` +
+          `If yes — generate ONE specific observation or question in 1-2 sentences. Sharp, accurate, direct.\n` +
+          `If no — respond with exactly "SKIP".\n` +
+          `Only comment if you have something genuinely useful to say. Silence is better than noise.\n` +
+          `No markdown. Spoken sentences only.`,
       }],
     });
 
@@ -216,6 +224,56 @@ async function evaluateProactiveComment(ctx: ScreenContext): Promise<void> {
   }
 }
 
+// ── Content hash helper ────────────────────────────────────────────────────────
+
+function hashCtxContent(ctx: ScreenContext): number {
+  const s = (ctx.activeApp + ctx.visibleContent).slice(0, 400);
+  let h   = 0;
+  for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
+  return h;
+}
+
+// ── Reading detection ──────────────────────────────────────────────────────────
+// If Isaac is in a productive context (studying/deep_work) and the same content
+// has been stable for 10+ minutes, offer a comprehension check.
+
+async function checkReadingDetection(ctx: ScreenContext): Promise<boolean> {
+  if (isSpeaking || isConversationActive()) return false;
+  const mode = classifyMode(ctx);
+  if (mode !== 'studying' && mode !== 'deep_work') {
+    // Reset if left reading context
+    productiveContentStart = 0;
+    readingCheckFired      = false;
+    productiveContentHash  = 0;
+    return false;
+  }
+
+  const h = hashCtxContent(ctx);
+  const now = Date.now();
+
+  if (h !== productiveContentHash) {
+    // Content changed significantly — reset the reading timer
+    productiveContentHash  = h;
+    productiveContentStart = now;
+    readingCheckFired      = false;
+    return false;
+  }
+
+  // Same content for 10+ minutes — offer comprehension question
+  const stableMinutes = (now - productiveContentStart) / 60_000;
+  if (stableMinutes >= 10 && !readingCheckFired) {
+    readingCheckFired = true;
+    const msg = `You've been reading this for ${Math.round(stableMinutes)} minutes. What's the key thing you're trying to understand?`;
+    console.log(`[ScreenObserver] reading detection fired (${Math.round(stableMinutes)}min stable content)`);
+    setLastProactiveMessage(msg, 'predictive');
+    if (await acquireSpeakerLock(30_000)) {
+      try { await speak(msg); } finally { await releaseSpeakerLock(); }
+    }
+    return true;
+  }
+  return false;
+}
+
 // ── Core router ────────────────────────────────────────────────────────────────
 
 function onScreenChanged(ctx: ScreenContext): void {
@@ -236,6 +294,24 @@ function onScreenChanged(ctx: ScreenContext): void {
   if (distracted) {
     console.log(`[ScreenObserver] distraction context (confidence ${confidence}) — notifying decision engine`);
     flagDistractionContext(confidence);
+  }
+
+  // Reading detection — 10-min stable content check
+  void checkReadingDetection(ctx);
+
+  // New trigger: significant content change in a productive context → proactive comment
+  const currentHash = hashCtxContent(ctx);
+  const contentChanged = currentHash !== lastProductiveHash;
+  const isProductive   = ctx.productivitySignal === 'productive';
+
+  if (contentChanged && isProductive && !isSpeaking && !isConversationActive()) {
+    lastProductiveHash = currentHash;
+    const now = Date.now();
+    if (now - lastCommentTime > COMMENT_COOLDOWN_MS) {
+      console.log('[ScreenObserver] productive content change — evaluating proactive comment');
+      void evaluateProactiveComment(ctx);
+    }
+    return;
   }
 
   if (isUnexpectedContext(prevMode, ctx)) {

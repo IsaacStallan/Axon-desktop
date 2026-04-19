@@ -9,6 +9,7 @@ import {
   logIntervention,
   logOverride,
   updateInterventionOutcome,
+  updateInterventionUserResponded,
   getRecentInterventions,
   getPatternForCurrentContext,
   type InterventionRecord,
@@ -68,9 +69,15 @@ let lastBreakTime        = 0;
 let onTrigger: (() => void) | null = null;
 
 let pendingOutcome: {
-  id:            string;
-  scoreAtFiring: number;
-  checkAt:       number;
+  id:             string;
+  scoreAtFiring:  number;
+  firedAt:        number;
+  respondCheckAt: number;   // T+2min — voice response window
+  earlyCheckAt:   number;   // T+5min — first productivity check
+  checkAt:        number;   // T+10min — definitive outcome
+  respondChecked: boolean;
+  earlyChecked:   boolean;
+  earlyPositive:  boolean;
 } | null = null;
 
 // Mode 1: content quality
@@ -101,18 +108,50 @@ export function setConversationTrigger(fn: () => void): void {
 // ── Outcome tracking ───────────────────────────────────────────────────────────
 
 export function checkPendingOutcome(): void {
-  if (!pendingOutcome || Date.now() < pendingOutcome.checkAt) return;
+  if (!pendingOutcome) return;
+  const now = Date.now();
+  const o   = pendingOutcome;
 
-  const currentScore = getProductivityScore();
-  const improved     = currentScore > pendingOutcome.scoreAtFiring + 10;
+  // Phase 1 — T+2min: check if user responded with voice
+  if (!o.respondChecked && now >= o.respondCheckAt) {
+    o.respondChecked = true;
+    if (isConversationActive()) {
+      updateInterventionUserResponded(o.id);
+      console.log('[InterventionDecider] outcome phase 1: user responded within 2 minutes');
+    }
+  }
 
-  updateInterventionOutcome(pendingOutcome.id, improved);
-  console.log(
-    `[InterventionDecider] outcome: ${pendingOutcome.scoreAtFiring}% → ${currentScore}% — ` +
-    (improved ? 'corrected ✓' : 'no change'),
-  );
-  if (!improved) updateEmotionState('intervention_ignored');
-  pendingOutcome = null;
+  // Phase 2 — T+5min: early productivity signal
+  if (!o.earlyChecked && now >= o.earlyCheckAt) {
+    o.earlyChecked = true;
+    const curr         = getCurrentApp();
+    const currentScore = getProductivityScore();
+    const scoreUp      = currentScore >= o.scoreAtFiring + 15;
+    const inProdApp    = curr.label === 'positive';
+    o.earlyPositive    = scoreUp || inProdApp;
+    console.log(
+      `[InterventionDecider] outcome phase 2 (5min): score ${o.scoreAtFiring}% → ${currentScore}%` +
+      `, productive app: ${inProdApp}, early positive: ${o.earlyPositive}`,
+    );
+  }
+
+  // Phase 3 — T+10min: definitive outcome
+  if (now >= o.checkAt) {
+    const curr            = getCurrentApp();
+    const currentScore    = getProductivityScore();
+    const scoreUp         = currentScore >= o.scoreAtFiring + 15;
+    const inProdApp       = curr.label === 'positive';
+    const courseCorrected = scoreUp || inProdApp || o.earlyPositive;
+
+    updateInterventionOutcome(o.id, courseCorrected);
+    console.log(
+      `[InterventionDecider] outcome phase 3 (10min): ${o.scoreAtFiring}% → ${currentScore}%` +
+      `, productive app: ${inProdApp}, early signal: ${o.earlyPositive}` +
+      ` — ${courseCorrected ? 'corrected ✓' : 'no change ✗'}`,
+    );
+    if (!courseCorrected) updateEmotionState('intervention_ignored');
+    pendingOutcome = null;
+  }
 }
 
 // ── Map intervention type → model tier ───────────────────────────────────────
@@ -278,10 +317,17 @@ async function firePrewritten(message: string, type: InterventionRecord['type'])
   try {
     await speak(message);
     recordInterventionFired();
+    const firedAt2 = Date.now();
     pendingOutcome = {
-      id:            record.id,
-      scoreAtFiring: getProductivityScore(),
-      checkAt:       Date.now() + OUTCOME_DELAY_MS,
+      id:             record.id,
+      scoreAtFiring:  getProductivityScore(),
+      firedAt:        firedAt2,
+      respondCheckAt: firedAt2 + 2 * 60_000,
+      earlyCheckAt:   firedAt2 + 5 * 60_000,
+      checkAt:        firedAt2 + OUTCOME_DELAY_MS,
+      respondChecked: false,
+      earlyChecked:   false,
+      earlyPositive:  false,
     };
     if (onTrigger && !isConversationActive()) onTrigger();
   } finally {
@@ -627,6 +673,7 @@ async function fire(
   const message = await generateMessage(pattern, type, eventType, eventName);
   if (!message) return;
 
+  console.log(`[InterventionDecider] logging ${type} intervention to behaviourModel (app: ${curr.name})`);
   const record = logIntervention({
     timestamp:     new Date().toISOString(),
     type,
@@ -668,10 +715,17 @@ async function fire(
     }
   }
 
+  const firedAt = Date.now();
   pendingOutcome = {
-    id:            record.id,
-    scoreAtFiring: getProductivityScore(),
-    checkAt:       Date.now() + OUTCOME_DELAY_MS,
+    id:             record.id,
+    scoreAtFiring:  getProductivityScore(),
+    firedAt,
+    respondCheckAt: firedAt + 2 * 60_000,
+    earlyCheckAt:   firedAt + 5 * 60_000,
+    checkAt:        firedAt + OUTCOME_DELAY_MS,
+    respondChecked: false,
+    earlyChecked:   false,
+    earlyPositive:  false,
   };
 
   if (onTrigger && !isConversationActive()) {

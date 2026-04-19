@@ -14,6 +14,7 @@ import {
   updateTodayPattern,
   seedDefaultProfileIfMissing,
   getRecentInterventions,
+  resetSessionOnStartup,
 } from './behaviourModel';
 import { initCloudSync }  from './cloudSync';
 import { startHeartbeat } from './deviceCoordinator';
@@ -275,6 +276,9 @@ async function poll(): Promise<void> {
 export function startDecisionLoop(onTrigger: () => void): void {
   // Seed Isaac's known profile if this is the first launch
   seedDefaultProfileIfMissing();
+
+  // Reset session boundary — any pre-restart in-memory state shouldn't carry over
+  resetSessionOnStartup();
 
   // Pull cross-device data from Supabase in the background (best-effort)
   void initCloudSync();

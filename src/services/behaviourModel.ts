@@ -86,6 +86,25 @@ const ISAAC_DEFAULT_PROFILE: UserProfile = {
     'long enough to build. You have one life. This is it. Get back to work.',
 };
 
+// ── Session tracking ───────────────────────────────────────────────────────────
+
+/** Timestamp of when this Axon process started. Resets on every launch. */
+let sessionStartMs = Date.now();
+
+/**
+ * Called at startup from decisionEngine. Marks the session boundary so that
+ * continuous-focus calculations don't carry over state from a previous run.
+ * Does NOT delete historical data — only resets the in-memory reference point.
+ */
+export function resetSessionOnStartup(): void {
+  sessionStartMs = Date.now();
+  console.log('[BehaviourModel] session timer reset — new session starts now');
+}
+
+export function getSessionStartMs(): number {
+  return sessionStartMs;
+}
+
 // ── Storage paths ──────────────────────────────────────────────────────────────
 
 function behaviourDir(): string {
@@ -159,6 +178,15 @@ export function updateInterventionOutcome(id: string, courseCorrected: boolean):
   if (!entry) return;
   entry.courseCorrected = courseCorrected;
   writeArr('intervention_log.json', all, 500);
+}
+
+export function updateInterventionUserResponded(id: string): void {
+  const all   = readArr<InterventionRecord>('intervention_log.json');
+  const entry = all.find(r => r.id === id);
+  if (!entry) return;
+  entry.userResponded = true;
+  writeArr('intervention_log.json', all, 500);
+  console.log(`[BehaviourModel] intervention ${id} — userResponded marked true`);
 }
 
 export function getRecentInterventions(days = 30): InterventionRecord[] {
