@@ -503,6 +503,12 @@ ${getPendingTasksText() || '- Nothing on the list right now.'}
 Recent conversation history (last 3 days):
 ${recentHistory}
 
+CRITICAL EXECUTION RULE:
+When Isaac asks you to DO something — add to calendar, search, write, create — DO IT IMMEDIATELY using the available tools. Do not announce you are about to do it. Do not say "let me do that now." Just execute the tool, then report what you did.
+Wrong: "Let me add that to your calendar now."
+Right: [calls calendar_write tool] "Done. Added Axon deep work block Monday 2 to 4pm."
+Never describe an action you are about to take. Take it, then report it.
+
 CRITICAL SPEECH FORMAT — you are being spoken aloud via text-to-speech:
 - Never use em dashes (—) or en dashes (–). Use commas or just end the sentence.
 - Never use colons to introduce lists. Say "first, then, and finally" instead.
@@ -645,6 +651,8 @@ async function sendMessage(userText: string): Promise<string> {
       const toolUseBlocks = finalMsg.content.filter(
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
       );
+      orbWin?.webContents.send('orb:state', 'thinking');
+      orbWin?.webContents.send('axon:activity', `Executing: ${toolUseBlocks.map(b => b.name).join(', ')}`);
       const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
         toolUseBlocks.map(async (block) => {
           const result = await executeTool(block.name, block.input as Record<string, string>);
@@ -668,6 +676,8 @@ async function sendMessage(userText: string): Promise<string> {
         const moreBlocks = toolResponse.content.filter(
           (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
         );
+        orbWin?.webContents.send('orb:state', 'thinking');
+        orbWin?.webContents.send('axon:activity', `Executing: ${moreBlocks.map(b => b.name).join(', ')}`);
         history.push({ role: 'assistant', content: toolResponse.content });
         const moreResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
           moreBlocks.map(async (block) => {
@@ -725,6 +735,8 @@ async function sendMessage(userText: string): Promise<string> {
     const toolUseBlocks = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
     );
+    orbWin?.webContents.send('orb:state', 'thinking');
+    orbWin?.webContents.send('axon:activity', `Executing: ${toolUseBlocks.map(b => b.name).join(', ')}`);
     history.push({ role: 'assistant', content: response.content });
     const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
       toolUseBlocks.map(async (block) => {
