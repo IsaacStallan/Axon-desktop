@@ -31,7 +31,7 @@ console.error('[Main] loading decisionEngine');
 const { startDecisionLoop, snoozeInterventions } = require('./services/decisionEngine');
 const { toggleMute, isMuted } = require('./services/muteControl');
 console.error('[Main] loading voiceListener');
-const { startVoiceListener, stopVoiceListener, setOrbWindow, restartWakeWordListener, isCurrentlyListening } = require('./services/voiceListener');
+const { stopVoiceListener, setOrbWindow, startPersistentWakeWordLoop, stopPersistentWakeWordLoop, isWakeWordLoopRunning, setInConversation } = require('./services/voiceListener');
 const { startScreenMonitor, setOrbWindow: setScreenOrbWindow } = require('./services/screenAwareness');
 const { startScreenObserver, setOrbWindow: setObserverOrbWindow } = require('./services/screenObserver');
 const { startEmotionEngine } = require('./services/emotionEngine');
@@ -339,28 +339,18 @@ async function sendStats(): Promise<void> {
 function beginConversation(): void {
   if (isConversing) return;
   isConversing = true;
-  stopVoiceListener();          // silence the wake-word loop first
   setOrbState('listening');
   console.log('[Main] conversation started');
 
   triggerConversation().finally(() => {
     isConversing = false;
-    setOrbState('idle');
-    // conversationService may have already restarted the listener (error/empty-transcript path)
-    if (!(isCurrentlyListening as () => boolean)()) {
-      console.log('[Main] conversation ended — restarting wake-word listener');
-      startWakeWordListener();
-    } else {
-      console.log('[Main] conversation ended — wake-word listener already running');
-    }
+    // orb state + setInConversation(false) handled by triggerConversation's own finally
+    console.log('[Main] conversation ended — persistent wake word loop will resume');
   });
 }
 
 function startWakeWordListener(): void {
-  startVoiceListener(
-    () => beginConversation(),  // called when "hey axon" is detected
-    setOrbState,
-  );
+  void (startPersistentWakeWordLoop as Function)(() => beginConversation(), setOrbState);
 }
 
 // ── Onboarding window ────────────────────────────────────────────────────────
@@ -450,11 +440,11 @@ ipcMain.on('axon:interrupt', () => {
 ipcMain.on('orb:tap', () => {
   console.log('[Main] orb tapped');
   if (isConversing) {
-    // Tap while talking → end conversation, restart wake-word listener
+    // Tap while talking → end conversation; persistent loop resumes when
+    // triggerConversation's finally block calls setInConversation(false).
     stopConversation();
     isConversing = false;
     setOrbState('idle');
-    startWakeWordListener();
   } else {
     beginConversation();
   }
@@ -576,14 +566,20 @@ function startFullAxon(): void {
     startEmotionEngine();
     startWakeWordListener();
 
-    // Watchdog: if orb has been in "listening" state for >45s with no activity,
-    // force-restart the voice listener to escape any dead state.
-    setInterval(async () => {
+    // Watchdog: verify the persistent wake word loop is still running every 60s.
+    setInterval(() => {
+      if (!(isWakeWordLoopRunning as () => boolean)()) {
+        console.error('[Watchdog] wake word loop died — restarting');
+        startWakeWordListener();
+      }
+    }, 60_000);
+
+    // Secondary watchdog: if orb is stuck in "listening" state >45s, reset it.
+    setInterval(() => {
       if (listeningStateEnteredAt && Date.now() - listeningStateEnteredAt > 45_000) {
-        console.log('[Watchdog] stuck in listening state >45s — force restarting voice listener');
+        console.log('[Watchdog] stuck in listening state >45s — resetting orb');
         listeningStateEnteredAt = null;
         orbWindow?.webContents.send('orb:state', 'idle');
-        await (restartWakeWordListener as () => Promise<void>)();
       }
     }, 30_000);
 
@@ -596,11 +592,11 @@ function startFullAxon(): void {
     });
 
     powerMonitor.on('suspend', () => {
-      console.log('[Main] system suspending — stopping voice listener');
-      stopVoiceListener();
+      console.log('[Main] system suspending — stopping persistent wake word loop');
+      (stopPersistentWakeWordLoop as () => void)();
     });
     powerMonitor.on('resume', () => {
-      console.log('[Main] system resumed — restarting voice listener in 5 s');
+      console.log('[Main] system resumed — restarting persistent wake word loop in 5 s');
       setTimeout(() => {
         if (!isConversing) startWakeWordListener();
       }, 5000);

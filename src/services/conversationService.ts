@@ -18,7 +18,7 @@ import { killCurrentRecording } from './whisperService';
 import { getPendingTasksText } from './taskStore';
 import { getGoalsText, hasGoals, addGoal, type Goal } from './goalService';
 import { getOpenCommitmentsText, extractCommitmentsFromSession, detectCompletionsFromTranscript } from './commitmentTracker';
-import { isSleepWord, stopVoiceListener, restartWakeWordListener } from './voiceListener';
+import { isSleepWord, stopVoiceListener, setInConversation } from './voiceListener';
 import { formatProactiveContext } from './proactiveContext';
 import { getCurrentScreenSummary } from './screenAwareness';
 import { getPersonality, getEmotionPromptFragment } from './emotionEngine';
@@ -876,6 +876,8 @@ export function isConversationActive(): boolean {
 }
 
 export async function triggerConversation(): Promise<void> {
+  setInConversation(true);
+  try {
   // ── Rate limit check ────────────────────────────────────────────────────────
   const limitCheck = await checkConversationLimit();
   if (!limitCheck.allowed) {
@@ -948,8 +950,7 @@ export async function triggerConversation(): Promise<void> {
         if (cleanExchanges.length > 0) extractAndSaveFacts(cleanExchanges).catch(() => {});
         extractCommitmentsFromSession(sessionExchanges).catch(() => {});
       }
-      await restartWakeWordListener();
-      return;
+      return; // finally block handles setInConversation(false) + orb reset
     }
 
     if (isJunk(transcript)) {
@@ -1058,8 +1059,7 @@ export async function triggerConversation(): Promise<void> {
         if (cleanExchanges.length > 0) extractAndSaveFacts(cleanExchanges).catch(() => {});
         extractCommitmentsFromSession(sessionExchanges).catch(() => {});
       }
-      await restartWakeWordListener();
-      return;
+      return; // finally block handles setInConversation(false) + orb reset
     }
   }
 
@@ -1084,6 +1084,16 @@ export async function triggerConversation(): Promise<void> {
   }
 
   console.log('[Conversation] loop ended');
+
+  } catch (outerErr) {
+    console.error('[Conversation] unhandled outer error:', outerErr);
+  } finally {
+    conversationActive = false;
+    setInConversation(false);
+    orbWin?.webContents.send('orb:state', 'idle');
+    orbWin?.webContents.send('axon:activity', '');
+    console.log('[Conversation] complete — returning to wake word listener');
+  }
 }
 
 export function stopConversation(): void {

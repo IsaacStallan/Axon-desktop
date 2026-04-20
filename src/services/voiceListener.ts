@@ -33,6 +33,16 @@ let listeningActive   = false;
 let savedOnWakeWord:  (() => void) | null = null;
 let savedSetOrbState: StateCallback | null = null;
 
+// ── Persistent loop state ──────────────────────────────────────────────────────
+
+let inConversation      = false;
+let wakeWordLoopRunning = false;
+
+/** Gate: true while a conversation is active — persistent loop pauses when set. */
+export function setInConversation(val: boolean): void  { inConversation = val; }
+export function isInConversation(): boolean            { return inConversation; }
+export function isWakeWordLoopRunning(): boolean       { return wakeWordLoopRunning; }
+
 /** Returns true while the wake-word listener is recording audio (mic is in use). */
 export function isCurrentlyListening(): boolean {
   return listeningActive;
@@ -482,6 +492,127 @@ function recordSoxChunk(secs: number): Promise<Buffer> {
       reject(err);
     });
   });
+}
+
+// ── Persistent wake word loop ─────────────────────────────────────────────────
+
+/**
+ * Collect one WINDOW_MS window of audio.
+ * macOS: accumulates IPC mic chunks; Windows: SoX chunk.
+ */
+async function listenForOneChunk(): Promise<Buffer> {
+  if (process.platform !== 'darwin') {
+    return recordSoxChunk(WINDOW_MS / 1000);
+  }
+  return new Promise<Buffer>((resolve) => {
+    if (!orbWin || orbWin.isDestroyed()) { resolve(Buffer.alloc(0)); return; }
+
+    const audioChunks: Buffer[] = [];
+    let finished = false;
+
+    const chunkHandler = (_e: unknown, data: unknown) => {
+      if (!finished) audioChunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data as Uint8Array));
+    };
+
+    ipcMain.on('mic:chunk', chunkHandler);
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      ipcMain.removeListener('mic:chunk', chunkHandler);
+      if (orbWin && !orbWin.isDestroyed()) orbWin.webContents.send('mic:stop');
+      resolve(Buffer.concat(audioChunks));
+    };
+
+    const startMic = () => {
+      if (orbWin && !orbWin.isDestroyed()) orbWin.webContents.send('mic:start');
+    };
+
+    if (rendererMicReady) {
+      startMic();
+    } else {
+      ipcMain.once('mic:ready', startMic);
+    }
+
+    setTimeout(finish, WINDOW_MS);
+  });
+}
+
+/**
+ * Persistent wake word loop — never exits unless stopPersistentWakeWordLoop() is called.
+ * Pauses automatically while inConversation is true; resumes the moment it becomes false.
+ */
+export async function startPersistentWakeWordLoop(
+  onWakeWord?:  () => void,
+  setOrbState?: StateCallback,
+): Promise<void> {
+  if (onWakeWord)  savedOnWakeWord  = onWakeWord;
+  if (setOrbState) savedSetOrbState = setOrbState;
+
+  if (wakeWordLoopRunning) {
+    console.log('[VoiceListener] wake word loop already running');
+    return;
+  }
+  wakeWordLoopRunning = true;
+  console.log('[VoiceListener] starting persistent wake word loop');
+
+  while (wakeWordLoopRunning) {
+    try {
+      if (inConversation) {
+        listeningActive = false;
+        await sleep(500);
+        continue;
+      }
+
+      listeningActive = true;
+      const pcm = await listenForOneChunk();
+      listeningActive = false;
+
+      if (!wakeWordLoopRunning || inConversation) continue;
+      if (!hasSpeech(pcm)) continue;
+
+      const transcript = await transcribeBuffer(pcm);
+      if (!transcript) continue;
+
+      console.log('[VoiceListener] heard:', transcript);
+
+      if (isSleepWord(transcript)) {
+        console.log('[VoiceListener] sleep word in persistent mode — ignoring');
+        continue;
+      }
+
+      if (isWakeWord(transcript)) {
+        const confidence = scoreDirectedSpeech(transcript);
+        const decision   = confidence >= CONFIDENCE_THRESHOLD ? 'triggered' : 'ignored';
+        console.log(`[VoiceListener] confidence: ${confidence.toFixed(2)} — ${decision} (${transcript})`);
+
+        if (confidence >= CONFIDENCE_THRESHOLD && savedOnWakeWord) {
+          console.log('[VoiceListener] WAKE WORD DETECTED:', transcript);
+          const command = extractCommandAfterWakeWord(transcript);
+          if (command.length > 3) {
+            console.log('[VoiceListener] queuing post-wake command:', command);
+            setPendingUtterance(command);
+          }
+          inConversation  = true;   // pause loop before callback fires
+          listeningActive = false;
+          savedOnWakeWord();
+        }
+      }
+    } catch (err) {
+      console.error('[VoiceListener] wake word loop error — restarting in 1s:', err);
+      listeningActive = false;
+      await sleep(1000);
+      // NEVER exit — always continue the loop
+    }
+  }
+
+  listeningActive = false;
+  console.log('[VoiceListener] wake word loop stopped');
+}
+
+export function stopPersistentWakeWordLoop(): void {
+  wakeWordLoopRunning = false;
+  listeningActive     = false;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
