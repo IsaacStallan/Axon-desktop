@@ -4,7 +4,7 @@ import { promisify } from 'util';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
-import { generateSoul } from './memoryService';
+import { generateSoul, getLearnedFacts, setLearnedFacts } from './memoryService';
 import { addTask, getPendingTasks, markDone } from './taskStore';
 import { addGoal, getActiveGoals, updateGoal, getLifeGoals, logGoalActivity, type Goal } from './goalService';
 import { getWeeklyPlan } from './planningService';
@@ -516,6 +516,26 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
+  // ── Memory management ─────────────────────────────────────────────────────────
+  {
+    name:        'memory_review',
+    description: 'Review all stored facts about Isaac, remove noise (song lyrics, hallucinations, contradictions), and speak a summary of what was cleaned. ' +
+                 'Use when Isaac says "review your facts", "clean up your memory", "audit what you know", or similar.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name:        'memory_delete',
+    description: 'Delete any facts from memory that match a search query. ' +
+                 'Use when Isaac says "forget that you think X", "delete facts about Y", or "remove anything about Z".',
+    input_schema: {
+      type:       'object',
+      properties: {
+        query: { type: 'string', description: 'Word or phrase to match against facts. All matching facts are deleted.' },
+      },
+      required: ['query'],
+    },
+  },
+
   // ── Obsidian sync ─────────────────────────────────────────────────────────────
   {
     name:        'sync_obsidian',
@@ -944,6 +964,63 @@ export async function executeTool(
           `Signal: ${ctx.productivitySignal}.` +
           (ctx.notes ? ` Notes: ${ctx.notes}` : '')
         );
+      }
+
+      // ── Memory management ──────────────────────────────────────────────────────
+
+      case 'memory_review': {
+        const allFacts = getLearnedFacts();
+        if (allFacts.length === 0) return 'No facts in memory to review.';
+
+        const reviewClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
+        const resp = await reviewClient.messages.create({
+          model:      'claude-sonnet-4-6',
+          max_tokens: 2000,
+          messages: [{
+            role:    'user',
+            content:
+              `Review these ${allFacts.length} facts about Isaac stored in Axon's memory.\n\n` +
+              `Flag any that:\n` +
+              `(a) Sound like song lyrics, dialogue, poetry, or media content\n` +
+              `(b) Are clearly hallucinated or inferred rather than explicitly stated\n` +
+              `(c) Directly contradict another fact in the list\n` +
+              `(d) Are nonsensical or obviously wrong\n\n` +
+              `Return ONLY a JSON object: { "keepFacts": string[], "removeFacts": string[] }\n` +
+              `Include every fact in exactly one array. Err on the side of keeping if uncertain.\n\n` +
+              `Facts:\n${allFacts.map((f, i) => `${i + 1}. ${f}`).join('\n')}`,
+          }],
+        });
+
+        const block = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+        if (!block) return 'Memory review failed — no response from Claude.';
+
+        const raw   = block.text.trim().replace(/^```json?\s*/i, '').replace(/```$/, '').trim();
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (!match) return 'Memory review failed — could not parse response.';
+
+        const result = JSON.parse(match[0]) as { keepFacts?: unknown[]; removeFacts?: unknown[] };
+        const keep   = (result.keepFacts  ?? []).filter((f): f is string => typeof f === 'string');
+        const remove = (result.removeFacts ?? []).filter((f): f is string => typeof f === 'string');
+
+        if (remove.length === 0) return 'Reviewed all facts — nothing to remove. Memory is clean.';
+
+        setLearnedFacts(keep);
+        console.log(`[Tool] memory_review — removed ${remove.length} facts, kept ${keep.length}`);
+        return `Removed ${remove.length} facts that looked like noise. Your memory is cleaner now. ${keep.length} facts remain.`;
+      }
+
+      case 'memory_delete': {
+        const query = (input.query ?? '').trim().toLowerCase();
+        if (!query) return 'No search query provided.';
+
+        const allFacts = getLearnedFacts();
+        const matching = allFacts.filter(f => f.toLowerCase().includes(query));
+        if (matching.length === 0) return `No facts found matching "${input.query}".`;
+
+        const remaining = allFacts.filter(f => !f.toLowerCase().includes(query));
+        setLearnedFacts(remaining);
+        console.log(`[Tool] memory_delete — removed ${matching.length} facts matching "${query}"`);
+        return `Deleted ${matching.length} fact${matching.length === 1 ? '' : 's'} containing "${input.query}". ${remaining.length} facts remain.`;
       }
 
       // ── Obsidian sync ──────────────────────────────────────────────────────────

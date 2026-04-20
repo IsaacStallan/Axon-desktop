@@ -174,6 +174,28 @@ async function selectRelevantFacts(allFacts: string[], context: string): Promise
   }
 }
 
+// ── Ambient audio detection ───────────────────────────────────────────────────
+// Transcripts that likely came from music, TV, or background voices rather than
+// Isaac speaking directly to Axon. Used to gate fact extraction, not conversation.
+
+function isAmbientAudio(transcript: string): boolean {
+  const lower = transcript.toLowerCase();
+
+  // Short phrases are unlikely to be ambient
+  if (transcript.trim().split(/\s+/).length <= 15) return false;
+
+  const hasFirstPerson  = /\b(i |i'm|i've|i'll|i'd|my |me |we |our )\b/i.test(transcript);
+  const hasAxonReference = /\baxon\b|hey ax/i.test(transcript);
+
+  // Long transcript with no first-person and no Axon reference → ambient audio
+  if (!hasFirstPerson && !hasAxonReference) {
+    console.log('[Memory] flagging as possible ambient audio — no first person or Axon reference');
+    return true;
+  }
+
+  return false;
+}
+
 // ── Transcript quality filters ────────────────────────────────────────────────
 
 // Phrases Whisper generates from silence or background noise instead of speech.
@@ -922,7 +944,8 @@ export async function triggerConversation(): Promise<void> {
       history.splice(0, history.length);
       if (sessionExchanges.length > 0) {
         saveRecentSession(sessionExchanges);
-        extractAndSaveFacts(sessionExchanges).catch(() => {});
+        const cleanExchanges = sessionExchanges.filter(e => !isAmbientAudio(e.user));
+        if (cleanExchanges.length > 0) extractAndSaveFacts(cleanExchanges).catch(() => {});
         extractCommitmentsFromSession(sessionExchanges).catch(() => {});
       }
       await restartWakeWordListener();
@@ -989,10 +1012,14 @@ export async function triggerConversation(): Promise<void> {
       turnCount++;
       console.log('[Memory] saved exchange, total facts:', getLearnedFacts().length);
 
-      // Every 3 turns, fire-and-forget fact extraction
+      // Every 3 turns, fire-and-forget fact extraction (skip if ambient audio)
       if (turnCount % 3 === 0) {
-        console.log('[Memory] triggering mid-session fact extraction...');
-        extractAndSaveFacts(sessionExchanges.slice(-3)).catch(() => {});
+        if (isAmbientAudio(transcript)) {
+          console.log('[Memory] skipping mid-session extraction — ambient audio detected');
+        } else {
+          console.log('[Memory] triggering mid-session fact extraction...');
+          extractAndSaveFacts(sessionExchanges.slice(-3)).catch(() => {});
+        }
       }
 
       if (isMuted()) {
@@ -1027,7 +1054,8 @@ export async function triggerConversation(): Promise<void> {
       history.splice(0, history.length);
       if (sessionExchanges.length > 0) {
         saveRecentSession(sessionExchanges);
-        extractAndSaveFacts(sessionExchanges).catch(() => {});
+        const cleanExchanges = sessionExchanges.filter(e => !isAmbientAudio(e.user));
+        if (cleanExchanges.length > 0) extractAndSaveFacts(cleanExchanges).catch(() => {});
         extractCommitmentsFromSession(sessionExchanges).catch(() => {});
       }
       await restartWakeWordListener();
@@ -1045,9 +1073,13 @@ export async function triggerConversation(): Promise<void> {
   }
 
   // Extract facts + commitments from the whole session on close
+  // Filter out any exchanges where the user's transcript looks like ambient audio
   if (sessionExchanges.length > 0) {
     console.log('[Memory] end-of-session extraction...');
-    extractAndSaveFacts(sessionExchanges).catch(() => {});
+    const cleanExchanges = sessionExchanges.filter(e => !isAmbientAudio(e.user));
+    if (cleanExchanges.length > 0) {
+      extractAndSaveFacts(cleanExchanges).catch(() => {});
+    }
     extractCommitmentsFromSession(sessionExchanges).catch(() => {});
   }
 

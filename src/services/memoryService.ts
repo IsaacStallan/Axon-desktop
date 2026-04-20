@@ -19,6 +19,29 @@ const client              = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KE
 const MAX_FACTS           = 600;
 const CONSOLIDATION_TRIGGER = 500;
 
+// ── Fact metadata (source tracking for Obsidian confidence indicators) ─────────
+
+type FactSource = 'direct' | 'consolidated' | 'uncertain';
+type FactMeta   = Record<string, FactSource>;
+
+function factMetaPath(): string {
+  return path.join(memoryDir(), 'fact_meta.json');
+}
+
+function getFactMeta(): FactMeta {
+  const p = factMetaPath();
+  if (!fs.existsSync(p)) return {};
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return {}; }
+}
+
+function saveFactMeta(meta: FactMeta): void {
+  try { fs.writeFileSync(factMetaPath(), JSON.stringify(meta, null, 2), 'utf8'); } catch { /* non-critical */ }
+}
+
+export function getLearnedFactMeta(): FactMeta {
+  return getFactMeta();
+}
+
 /** Base memory directory — created on first use. */
 function memoryDir(): string {
   const dir = path.join(app.getPath('userData'), 'memory');
@@ -111,6 +134,13 @@ export function getLearnedFacts(): string[] {
   const p = factsPath();
   if (!fs.existsSync(p)) return [];
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return []; }
+}
+
+/**
+ * Overwrite the facts array entirely. Used by memory_review and memory_delete tools.
+ */
+export function setLearnedFacts(facts: string[]): void {
+  fs.writeFileSync(factsPath(), JSON.stringify(facts, null, 2), 'utf8');
 }
 
 /**
@@ -285,33 +315,32 @@ export async function extractAndSaveFacts(exchanges: Exchange[]): Promise<void> 
     .map(e => `Isaac: ${e.user}\nAxon: ${e.axon}`)
     .join('\n\n');
 
+  const extractionPrompt = `Extract factual information about Isaac from this conversation exchange.
+
+STRICT RULES — only extract a fact if ALL of these are true:
+1. Isaac said it directly and clearly about himself ("I work at...", "I want to...", "My goal is...")
+2. It is specific and verifiable — not vague or inferred
+3. It is about Isaac's real life — not hypothetical, not about someone else, not from media
+4. You are 100% certain Isaac was speaking to Axon, not to another person
+
+DO NOT extract:
+- Anything that sounds like song lyrics, poetry, or media dialogue
+- Anything said in third person that might be about someone else
+- Inferences or assumptions — only explicit statements
+- Questions Isaac asked (only answers/statements)
+- Anything prefixed with "apparently", "I think", "maybe", "someone told me"
+
+If you are not certain a statement meets ALL rules above — skip it entirely.
+Return ONLY a JSON array of strings. If nothing qualifies, return [].
+
+Conversation:
+${convoText}`;
+
   try {
     const resp = await client.messages.create({
       model:      'claude-sonnet-4-6',
       max_tokens: 500,
-      messages:   [{
-        role:    'user',
-        content: `You are building a memory profile for Axon, Isaac's personal AI.
-Extract every piece of useful context about Isaac from this conversation — be generous, not conservative.
-
-Include ANY of the following if present:
-- Topics he discussed, asked about, or showed interest in
-- Problems he is working on, stuck on, or worried about
-- Decisions he made or is considering
-- Projects, businesses, or goals he mentioned
-- Behavioral patterns (e.g. "avoided working on X", "excited about Y")
-- Emotional state, frustrations, or concerns
-- Personal details: people, places, events, habits
-- What he was doing on his PC and for how long
-- Things he wants Axon to know or remember
-
-Return ONLY a raw JSON array of strings (no markdown, no explanation).
-Be liberal — if it could be useful context in any future conversation, include it.
-Return [] only if the conversation contained genuinely zero useful information about Isaac.
-
-Conversation:
-${convoText}`,
-      }],
+      messages:   [{ role: 'user', content: extractionPrompt }],
     });
 
     const block = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
@@ -329,11 +358,18 @@ ${convoText}`,
     const existing = getLearnedFacts();
     let merged     = [...existing, ...strings];
 
-    if (merged.length >= CONSOLIDATION_TRIGGER) {
+    // Track metadata for new direct facts
+    const meta = getFactMeta();
+    for (const f of strings) meta[f] = 'direct';
+
+    const didConsolidate = merged.length >= CONSOLIDATION_TRIGGER;
+    if (didConsolidate) {
       const before = merged.length;
       console.log(`[Memory] consolidating — ${before} facts → target ~300`);
       try {
         merged = await consolidateFacts(merged);
+        // After consolidation all facts are considered consolidated
+        for (const f of merged) meta[f] = meta[f] === 'direct' ? 'direct' : 'consolidated';
       } catch (e) {
         console.warn('[Memory] consolidation failed — trimming to last 450 facts:', e);
         merged = merged.slice(-450);
@@ -342,6 +378,7 @@ ${convoText}`,
     }
 
     fs.writeFileSync(factsPath(), JSON.stringify(merged, null, 2), 'utf8');
+    saveFactMeta(meta);
     console.log(`[Memory] +${strings.length} facts saved (total: ${merged.length})`);
 
     // Push new facts to Supabase (fire-and-forget)

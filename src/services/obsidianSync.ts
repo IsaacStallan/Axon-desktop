@@ -1,6 +1,6 @@
 import fs   from 'fs';
 import path from 'path';
-import { getLearnedFacts }          from './memoryService';
+import { getLearnedFacts, getLearnedFactMeta } from './memoryService';
 import { getActiveGoals }           from './goalService';
 import { getWeeklyPlan }            from './planningService';
 import { getRecentInterventions, getRecentAppSessions, getUserProfile } from './behaviourModel';
@@ -24,8 +24,16 @@ function writeVaultFile(filename: string, content: string): void {
 
 async function syncFacts(): Promise<void> {
   const facts   = getLearnedFacts();
+  const meta    = getLearnedFactMeta();
   const profile = getUserProfile();
   const ts      = new Date().toLocaleString('en-AU');
+
+  function formatFact(f: string): string {
+    const source = meta[f];
+    if (source === 'consolidated') return `- ${f} *(consolidated)*`;
+    if (source === 'uncertain')    return `- ${f} *(uncertain — verify)*`;
+    return `- ${f}`;
+  }
 
   const categories: Record<string, string[]> = {
     'Work & Career':         [],
@@ -44,7 +52,7 @@ async function syncFacts(): Promise<void> {
 
   for (const fact of facts) {
     const lower = fact.toLowerCase();
-    if (workKw.some(k => lower.includes(k)))    categories['Work & Career'].push(fact);
+    if (workKw.some(k => lower.includes(k)))         categories['Work & Career'].push(fact);
     else if (projectKw.some(k => lower.includes(k))) categories['Projects'].push(fact);
     else if (goalKw.some(k => lower.includes(k)))    categories['Goals'].push(fact);
     else if (behavKw.some(k => lower.includes(k)))   categories['Behavioural Patterns'].push(fact);
@@ -55,7 +63,7 @@ async function syncFacts(): Promise<void> {
   const sections = Object.entries(categories)
     .filter(([, items]) => items.length > 0)
     .map(([heading, items]) =>
-      `## ${heading}\n${items.map(f => `- ${f}`).join('\n')}`
+      `## ${heading}\n${items.map(f => formatFact(f)).join('\n')}`
     ).join('\n\n');
 
   const driftWindows = (profile.driftWindows ?? [])
