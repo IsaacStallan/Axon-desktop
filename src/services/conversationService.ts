@@ -383,8 +383,13 @@ const HAIKU_MODEL  = 'claude-haiku-4-5-20251001';
 function buildSimpleSystemPrompt(): string {
   const curr        = getCurrentApp();
   const emotionFrag = getEmotionPromptFragment();
-  const time        = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+  const now         = new Date();
+  const dateString  = now.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Australia/Sydney' });
+  const timeString  = now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Sydney' });
+  const dateContext = `CURRENT DATE AND TIME: ${dateString}, ${timeString} AEST (Sydney, Australia)\n\n`;
+  const time        = now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
   return (
+    dateContext +
     `You are Axon — Isaac's personal AI assistant. You communicate via voice through text-to-speech. You CAN speak out loud — that is how this conversation is happening right now. Never say you are text-based or cannot speak. You are speaking to Isaac right now via ElevenLabs TTS.\n` +
     `${ARETICA_VISION_ONELINER}\n` +
     `Respond in 1-2 sentences max. No markdown, no lists.\n` +
@@ -398,8 +403,13 @@ function buildModerateSystemPrompt(): string {
   const curr        = getCurrentApp();
   const emotionFrag = getEmotionPromptFragment();
   const recentFacts = (sessionFacts ?? getLearnedFacts()).slice(0, 5);
-  const time        = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+  const now         = new Date();
+  const dateString  = now.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Australia/Sydney' });
+  const timeString  = now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Sydney' });
+  const dateContext = `CURRENT DATE AND TIME: ${dateString}, ${timeString} AEST (Sydney, Australia)\n\n`;
+  const time        = now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
   return (
+    dateContext +
     `You are Axon — Isaac's personal AI assistant. You communicate via voice through text-to-speech. You CAN speak out loud — that is how this conversation is happening right now. Never say you are text-based or cannot speak. You are speaking to Isaac right now via ElevenLabs TTS.\n` +
     `${ARETICA_VISION_PRINCIPLES}\n` +
     `Conversational, sharp, no markdown.\n` +
@@ -444,7 +454,12 @@ async function buildSystemPrompt(): Promise<string> {
     pendingInterruptContext = null;
   }
 
-  return `${ARETICA_VISION}
+  const now        = new Date();
+  const dateString = now.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Australia/Sydney' });
+  const timeString = now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Sydney' });
+  const dateContext = `CURRENT DATE AND TIME: ${dateString}, ${timeString} AEST (Sydney, Australia)\n\n`;
+
+  return `${dateContext}${ARETICA_VISION}
 
 You are Axon. Not an AI assistant. Not Claude. Axon.
 
