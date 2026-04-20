@@ -972,55 +972,78 @@ export async function executeTool(
         const allFacts = getLearnedFacts();
         if (allFacts.length === 0) return 'No facts in memory to review.';
 
-        const reviewClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
-        const resp = await reviewClient.messages.create({
-          model:      'claude-sonnet-4-6',
-          max_tokens: 2000,
-          messages: [{
-            role:    'user',
-            content:
-              `Review these ${allFacts.length} facts about Isaac stored in Axon's memory.\n\n` +
-              `Flag any that:\n` +
-              `(a) Sound like song lyrics, dialogue, poetry, or media content\n` +
-              `(b) Are clearly hallucinated or inferred rather than explicitly stated\n` +
-              `(c) Directly contradict another fact in the list\n` +
-              `(d) Are nonsensical or obviously wrong\n\n` +
-              `Return ONLY a JSON object: { "keepFacts": string[], "removeFacts": string[] }\n` +
-              `Include every fact in exactly one array. Err on the side of keeping if uncertain.\n\n` +
-              `Facts:\n${allFacts.map((f, i) => `${i + 1}. ${f}`).join('\n')}`,
-          }],
-        });
+        const reviewHaikuClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
 
-        const block = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
-        if (!block) return 'Memory review failed — no response from Claude.';
+        async function reviewBatch(batch: string[]): Promise<string[]> {
+          const numbered = batch.map((f, i) => `${i}: ${f}`).join('\n');
+          try {
+            const r = await reviewHaikuClient.messages.create({
+              model:      'claude-haiku-4-5-20251001',
+              max_tokens: 200,
+              messages: [{
+                role:    'user',
+                content:
+                  `You are reviewing facts about Isaac Stallan for quality.\n` +
+                  `Here are ${batch.length} facts (numbered):\n${numbered}\n\n` +
+                  `Return ONLY a JSON array of the INDEX NUMBERS of facts that should be removed because they are:\n` +
+                  `- Song lyrics or media dialogue\n` +
+                  `- Clearly hallucinated or not something Isaac said\n` +
+                  `- About someone else, not Isaac\n` +
+                  `- Nonsensical or corrupted\n\n` +
+                  `Example response: [2, 7, 15]\n` +
+                  `If none should be removed, return: []\n` +
+                  `Return ONLY the JSON array, nothing else.`,
+              }],
+            });
+            const block = r.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+            if (!block) return [];
+            const raw   = block.text.trim().replace(/^```json?\s*/i, '').replace(/```$/, '').trim();
+            const match = raw.match(/\[[\s\S]*?\]/);
+            if (!match) return [];
+            const indices = JSON.parse(match[0]) as unknown[];
+            return indices
+              .filter((i): i is number => typeof i === 'number')
+              .map(i => batch[i])
+              .filter(Boolean) as string[];
+          } catch {
+            console.error('[MemoryReview] batch parse failed, skipping batch');
+            return [];
+          }
+        }
 
-        const raw   = block.text.trim().replace(/^```json?\s*/i, '').replace(/```$/, '').trim();
-        const match = raw.match(/\{[\s\S]*\}/);
-        if (!match) return 'Memory review failed — could not parse response.';
+        const BATCH_SIZE = 50;
+        const toRemove: string[] = [];
+        for (let i = 0; i < allFacts.length; i += BATCH_SIZE) {
+          const batch  = allFacts.slice(i, i + BATCH_SIZE);
+          const bad    = await reviewBatch(batch);
+          toRemove.push(...bad);
+        }
 
-        const result = JSON.parse(match[0]) as { keepFacts?: unknown[]; removeFacts?: unknown[] };
-        const keep   = (result.keepFacts  ?? []).filter((f): f is string => typeof f === 'string');
-        const remove = (result.removeFacts ?? []).filter((f): f is string => typeof f === 'string');
-
-        if (remove.length === 0) return 'Reviewed all facts — nothing to remove. Memory is clean.';
-
-        setLearnedFacts(keep);
-        console.log(`[Tool] memory_review — removed ${remove.length} facts, kept ${keep.length}`);
-        return `Removed ${remove.length} facts that looked like noise. Your memory is cleaner now. ${keep.length} facts remain.`;
+        const removeSet = new Set(toRemove);
+        const kept      = allFacts.filter(f => !removeSet.has(f));
+        setLearnedFacts(kept);
+        console.log(`[Tool] memory_review — removed ${toRemove.length}, kept ${kept.length}`);
+        return `Reviewed ${allFacts.length} facts. Removed ${toRemove.length} that looked like noise. ${kept.length} facts kept.`;
       }
 
       case 'memory_delete': {
-        const query = (input.query ?? '').trim().toLowerCase();
-        if (!query) return 'No search query provided.';
+        try {
+          const query = (input.query ?? '').trim().toLowerCase();
+          if (!query) return 'No search query provided.';
 
-        const allFacts = getLearnedFacts();
-        const matching = allFacts.filter(f => f.toLowerCase().includes(query));
-        if (matching.length === 0) return `No facts found matching "${input.query}".`;
+          const allFacts = getLearnedFacts();
+          const matching = allFacts.filter(f => f.toLowerCase().includes(query));
+          if (matching.length === 0) return `No facts found matching "${input.query}".`;
 
-        const remaining = allFacts.filter(f => !f.toLowerCase().includes(query));
-        setLearnedFacts(remaining);
-        console.log(`[Tool] memory_delete — removed ${matching.length} facts matching "${query}"`);
-        return `Deleted ${matching.length} fact${matching.length === 1 ? '' : 's'} containing "${input.query}". ${remaining.length} facts remain.`;
+          const remaining = allFacts.filter(f => !f.toLowerCase().includes(query));
+          setLearnedFacts(remaining);
+          console.log(`[Tool] memory_delete — removed ${matching.length} facts matching "${query}"`);
+          return `Deleted ${matching.length} fact${matching.length === 1 ? '' : 's'} containing "${input.query}". ${remaining.length} facts remain.`;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error('[Tool] memory_delete error:', msg);
+          return `Memory delete failed: ${msg}`;
+        }
       }
 
       // ── Obsidian sync ──────────────────────────────────────────────────────────
