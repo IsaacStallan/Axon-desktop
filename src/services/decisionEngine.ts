@@ -16,8 +16,9 @@ import {
   getRecentInterventions,
   resetSessionOnStartup,
 } from './behaviourModel';
-import { initCloudSync }  from './cloudSync';
-import { startHeartbeat } from './deviceCoordinator';
+import { initCloudSync }    from './cloudSync';
+import { startHeartbeat }  from './deviceCoordinator';
+import { syncToObsidian }  from './obsidianSync';
 import { getCurrentScreenSummary } from './screenAwareness';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -299,4 +300,7 @@ export function startDecisionLoop(onTrigger: () => void): void {
 
   // Then every 5 minutes
   setInterval(() => { void poll(); }, POLL_INTERVAL_MS);
+
+  // Sync to Obsidian every 30 minutes (fire-and-forget)
+  setInterval(() => { void syncToObsidian(); }, 30 * 60_000);
 }

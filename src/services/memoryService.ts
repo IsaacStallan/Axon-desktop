@@ -15,8 +15,9 @@ export interface Exchange {
 
 // ── Internals ─────────────────────────────────────────────────────────────────
 
-const client    = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
-const MAX_FACTS = 200;
+const client              = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
+const MAX_FACTS           = 600;
+const CONSOLIDATION_TRIGGER = 500;
 
 /** Base memory directory — created on first use. */
 function memoryDir(): string {
@@ -238,21 +239,20 @@ ${convoText || 'No conversations recorded yet.'}`,
  * by merging related facts together. All unique information is preserved.
  */
 async function consolidateFacts(facts: string[]): Promise<string[]> {
-  const resp = await client.messages.create({
-    model:      'claude-haiku-4-5-20251001',
-    max_tokens: 1500,
-    messages:   [{
-      role:    'user',
-      content: `You are consolidating a memory store for an AI assistant. The list below has ${facts.length} facts about a user.
-Merge related facts together so the total count is reduced to around 150 facts.
-For example, 10 facts about the same project become 1 comprehensive fact.
-Preserve all unique information — just combine facts that are about the same topic or entity.
-
-Return ONLY a raw JSON array of strings (no markdown, no explanation). Each string is one consolidated fact.
+  const consolidationPrompt = `You have ${facts.length} facts about Isaac. Consolidate these into ~300 facts by:
+1. Merging related facts into single richer facts (e.g. "works at Downer" + "Downer involves AI training" = "Works at Downer Group on AI training for infrastructure defect detection")
+2. Removing outdated facts when newer ones supersede them
+3. Keeping all specific details, preferences, goals, and behavioural patterns
+4. Never lose information — compress it, don't delete it
+Return ONLY a JSON array of strings. No preamble.
 
 Facts to consolidate:
-${facts.map((f, i) => `${i + 1}. ${f}`).join('\n')}`,
-    }],
+${facts.map((f, i) => `${i + 1}. ${f}`).join('\n')}`;
+
+  const resp = await client.messages.create({
+    model:      'claude-haiku-4-5-20251001',
+    max_tokens: 4000,
+    messages:   [{ role: 'user', content: consolidationPrompt }],
   });
 
   const block = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
@@ -329,16 +329,16 @@ ${convoText}`,
     const existing = getLearnedFacts();
     let merged     = [...existing, ...strings];
 
-    if (merged.length >= MAX_FACTS) {
+    if (merged.length >= CONSOLIDATION_TRIGGER) {
       const before = merged.length;
-      console.log(`[Memory] consolidating — ${before} facts → target ~150`);
+      console.log(`[Memory] consolidating — ${before} facts → target ~300`);
       try {
         merged = await consolidateFacts(merged);
       } catch (e) {
-        console.warn('[Memory] consolidation failed — trimming to last 190 facts:', e);
-        merged = merged.slice(-190);
+        console.warn('[Memory] consolidation failed — trimming to last 450 facts:', e);
+        merged = merged.slice(-450);
       }
-      console.log(`[Memory] consolidating — ${before} facts → ${merged.length}`);
+      console.log(`[Memory] consolidated — ${before} facts → ${merged.length}`);
     }
 
     fs.writeFileSync(factsPath(), JSON.stringify(merged, null, 2), 'utf8');

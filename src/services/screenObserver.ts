@@ -6,6 +6,7 @@ import { triggerContentQualityCheck, flagDistractionContext } from './interventi
 import { getTimeOnCurrentApp } from './windowMonitor';
 import { speak, isSpeaking }          from './elevenLabsService';
 import { isConversationActive }        from './conversationService';
+import { isCurrentlyListening }        from './voiceListener';
 import { setLastProactiveMessage }    from './proactiveContext';
 import {
   acquireSpeakerLock,
@@ -172,6 +173,10 @@ function isUnexpectedContext(prevMode: ActivityMode, ctx: ScreenContext): boolea
 // ── Proactive comment (Haiku, SKIP-guarded) ────────────────────────────────────
 
 async function evaluateProactiveComment(ctx: ScreenContext): Promise<void> {
+  if (isCurrentlyListening()) {
+    console.log('[ScreenObserver] skipping — mic is active');
+    return;
+  }
   if (isSpeaking || isConversationActive()) return;
 
   const now = Date.now();
@@ -238,6 +243,10 @@ function hashCtxContent(ctx: ScreenContext): number {
 // has been stable for 10+ minutes, offer a comprehension check.
 
 async function checkReadingDetection(ctx: ScreenContext): Promise<boolean> {
+  if (isCurrentlyListening()) {
+    console.log('[ScreenObserver] skipping — mic is active');
+    return false;
+  }
   if (isSpeaking || isConversationActive()) return false;
   const mode = classifyMode(ctx);
   if (mode !== 'studying' && mode !== 'deep_work') {
@@ -277,6 +286,10 @@ async function checkReadingDetection(ctx: ScreenContext): Promise<boolean> {
 // ── Core router ────────────────────────────────────────────────────────────────
 
 function onScreenChanged(ctx: ScreenContext): void {
+  if (isCurrentlyListening()) {
+    console.log('[ScreenObserver] skipping — mic is active');
+    return;
+  }
   const prevMode = lastKnownMode;
   lastKnownMode  = classifyMode(ctx);
 

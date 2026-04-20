@@ -28,6 +28,7 @@ import {
 import { orchestrate } from './subAgentOrchestrator';
 import { updateWakeWord } from './voiceListener';
 import { analyseOnDemand } from './screenAwareness';
+import { syncToObsidian } from './obsidianSync';
 
 // Pending draft waiting for verbal confirmation before send
 let pendingDraft: DraftResult | null = null;
@@ -515,6 +516,14 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
+  // ── Obsidian sync ─────────────────────────────────────────────────────────────
+  {
+    name:        'sync_obsidian',
+    description: 'Sync all of Axon\'s memory, goals, weekly plan, intervention log, and behaviour patterns to the Obsidian vault. ' +
+                 'Use when Isaac says "sync to Obsidian", "update Obsidian", or "sync my notes".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+
   // ── Sub-agent orchestration ───────────────────────────────────────────────────
   {
     name:        'spawn_agents',
@@ -832,6 +841,7 @@ export async function executeTool(
 
       case 'weekly_review': {
         const review = await runWeeklyReview();
+        void syncToObsidian();
         return review;
       }
 
@@ -934,6 +944,16 @@ export async function executeTool(
           `Signal: ${ctx.productivitySignal}.` +
           (ctx.notes ? ` Notes: ${ctx.notes}` : '')
         );
+      }
+
+      // ── Obsidian sync ──────────────────────────────────────────────────────────
+
+      case 'sync_obsidian': {
+        await syncToObsidian();
+        if (!process.env.OBSIDIAN_VAULT_PATH) {
+          return 'Obsidian vault path not set. Add OBSIDIAN_VAULT_PATH to your .env file.';
+        }
+        return 'Synced to Obsidian. Profile, Goals, Weekly Plan, Intervention Log, and Behaviour Patterns updated.';
       }
 
       // ── Sub-agent orchestration ────────────────────────────────────────────────

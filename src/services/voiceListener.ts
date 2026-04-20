@@ -29,6 +29,12 @@ let sessionGen       = 0;          // incremented on every start; old sessions s
 let activeSoxPid:    number | undefined;
 let orbWin:          BrowserWindow | null = null;
 let rendererMicReady = false;
+let listeningActive  = false;
+
+/** Returns true while the wake-word listener is recording audio (mic is in use). */
+export function isCurrentlyListening(): boolean {
+  return listeningActive;
+}
 
 ipcMain.on('mic:ready', () => {
   rendererMicReady = true;
@@ -218,13 +224,15 @@ export function startVoiceListener(
   onWakeWord:  () => void,
   setOrbState: StateCallback,
 ): void {
-  stopFlag = false;
+  stopFlag       = false;
+  listeningActive = true;
   const gen = ++sessionGen;
   void sessionLoop(onWakeWord, setOrbState, gen);
 }
 
 export function stopVoiceListener(): void {
-  stopFlag = true;
+  stopFlag        = true;
+  listeningActive = false;
   killSox(activeSoxPid);
   // Immediately stop the renderer mic — don't wait up to WINDOW_MS for the
   // timer to fire.  This prevents the renderer from sending stale audio into
@@ -257,6 +265,7 @@ async function sessionLoop(
     }
   }
 
+  listeningActive = false;
   console.log(`[VoiceListener] loop stopped (gen ${gen})`);
 }
 
