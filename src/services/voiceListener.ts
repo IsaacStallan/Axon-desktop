@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { spawn, exec } from 'child_process';
+import { spawn, exec, execSync } from 'child_process';
 import { ipcMain, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -24,12 +24,14 @@ type StateCallback = (state: 'idle' | 'listening' | 'speaking' | 'thinking' | 'u
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
-let stopFlag         = false;
-let sessionGen       = 0;          // incremented on every start; old sessions self-abort
-let activeSoxPid:    number | undefined;
-let orbWin:          BrowserWindow | null = null;
-let rendererMicReady = false;
-let listeningActive  = false;
+let stopFlag          = false;
+let sessionGen        = 0;          // incremented on every start; old sessions self-abort
+let activeSoxPid:     number | undefined;
+let orbWin:           BrowserWindow | null = null;
+let rendererMicReady  = false;
+let listeningActive   = false;
+let savedOnWakeWord:  (() => void) | null = null;
+let savedSetOrbState: StateCallback | null = null;
 
 /** Returns true while the wake-word listener is recording audio (mic is in use). */
 export function isCurrentlyListening(): boolean {
@@ -224,10 +226,28 @@ export function startVoiceListener(
   onWakeWord:  () => void,
   setOrbState: StateCallback,
 ): void {
-  stopFlag       = false;
-  listeningActive = true;
+  savedOnWakeWord  = onWakeWord;
+  savedSetOrbState = setOrbState;
+  stopFlag         = false;
+  listeningActive  = true;
   const gen = ++sessionGen;
   void sessionLoop(onWakeWord, setOrbState, gen);
+}
+
+export async function restartWakeWordListener(): Promise<void> {
+  if (!savedOnWakeWord || !savedSetOrbState) {
+    console.warn('[VoiceListener] cannot restart — no saved callbacks');
+    return;
+  }
+  console.log('[VoiceListener] restarting wake word listener...');
+  listeningActive = false;
+  stopFlag        = true;
+  killSox(activeSoxPid);
+  if (orbWin && !orbWin.isDestroyed()) orbWin.webContents.send('mic:stop');
+  try { execSync('pkill -f "rec.*sox"', { stdio: 'ignore' }); } catch { /* no sox processes */ }
+  await new Promise(r => setTimeout(r, 500));
+  startVoiceListener(savedOnWakeWord, savedSetOrbState);
+  console.log('[VoiceListener] wake word listener restarted');
 }
 
 export function stopVoiceListener(): void {

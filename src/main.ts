@@ -31,7 +31,7 @@ console.error('[Main] loading decisionEngine');
 const { startDecisionLoop, snoozeInterventions } = require('./services/decisionEngine');
 const { toggleMute, isMuted } = require('./services/muteControl');
 console.error('[Main] loading voiceListener');
-const { startVoiceListener, stopVoiceListener, setOrbWindow } = require('./services/voiceListener');
+const { startVoiceListener, stopVoiceListener, setOrbWindow, restartWakeWordListener, isCurrentlyListening } = require('./services/voiceListener');
 const { startScreenMonitor, setOrbWindow: setScreenOrbWindow } = require('./services/screenAwareness');
 const { startScreenObserver, setOrbWindow: setObserverOrbWindow } = require('./services/screenObserver');
 const { startEmotionEngine } = require('./services/emotionEngine');
@@ -259,7 +259,14 @@ const ACTIVITY_LABELS: Record<string, string> = {
   urgent:    'Urgent alert',
 };
 
+let listeningStateEnteredAt: number | null = null;
+
 export function setOrbState(state: 'idle' | 'listening' | 'speaking' | 'thinking' | 'urgent'): void {
+  if (state === 'listening') {
+    if (!listeningStateEnteredAt) listeningStateEnteredAt = Date.now();
+  } else {
+    listeningStateEnteredAt = null;
+  }
   orbWindow?.webContents.send('orb:state', state);
   orbWindow?.webContents.send('axon:activity', ACTIVITY_LABELS[state] ?? state);
   updateTrayState(ACTIVITY_LABELS[state] ?? state);
@@ -339,8 +346,13 @@ function beginConversation(): void {
   triggerConversation().finally(() => {
     isConversing = false;
     setOrbState('idle');
-    console.log('[Main] conversation ended — restarting wake-word listener');
-    startWakeWordListener();    // resume listening for the next wake word
+    // conversationService may have already restarted the listener (error/empty-transcript path)
+    if (!(isCurrentlyListening as () => boolean)()) {
+      console.log('[Main] conversation ended — restarting wake-word listener');
+      startWakeWordListener();
+    } else {
+      console.log('[Main] conversation ended — wake-word listener already running');
+    }
   });
 }
 
@@ -563,6 +575,17 @@ function startFullAxon(): void {
     startScreenObserver();
     startEmotionEngine();
     startWakeWordListener();
+
+    // Watchdog: if orb has been in "listening" state for >45s with no activity,
+    // force-restart the voice listener to escape any dead state.
+    setInterval(async () => {
+      if (listeningStateEnteredAt && Date.now() - listeningStateEnteredAt > 45_000) {
+        console.log('[Watchdog] stuck in listening state >45s — force restarting voice listener');
+        listeningStateEnteredAt = null;
+        orbWindow?.webContents.send('orb:state', 'idle');
+        await (restartWakeWordListener as () => Promise<void>)();
+      }
+    }, 30_000);
 
     globalShortcut.register('CommandOrControl+Shift+A', () => {
       console.log('[Main] hotkey activated'); beginConversation();

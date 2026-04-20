@@ -18,7 +18,7 @@ import { killCurrentRecording } from './whisperService';
 import { getPendingTasksText } from './taskStore';
 import { getGoalsText, hasGoals, addGoal, type Goal } from './goalService';
 import { getOpenCommitmentsText, extractCommitmentsFromSession, detectCompletionsFromTranscript } from './commitmentTracker';
-import { isSleepWord, stopVoiceListener } from './voiceListener';
+import { isSleepWord, stopVoiceListener, restartWakeWordListener } from './voiceListener';
 import { formatProactiveContext } from './proactiveContext';
 import { getCurrentScreenSummary } from './screenAwareness';
 import { getPersonality, getEmotionPromptFragment } from './emotionEngine';
@@ -913,13 +913,20 @@ export async function triggerConversation(): Promise<void> {
 
     if (!conversationActive) break;
 
-    if (!transcript.trim()) {
-      silenceStreak++;
-      if (silenceStreak >= 4) {
-        console.log(`[Conversation] silence streak ${silenceStreak} — ending`);
-        break;
+    if (!transcript || !transcript.trim()) {
+      console.log('[Conversation] empty transcript — returning to idle');
+      orbWin?.webContents.send('orb:state', 'idle');
+      orbWin?.webContents.send('axon:activity', '');
+      conversationActive = false;
+      stopConversationTimer();
+      history.splice(0, history.length);
+      if (sessionExchanges.length > 0) {
+        saveRecentSession(sessionExchanges);
+        extractAndSaveFacts(sessionExchanges).catch(() => {});
+        extractCommitmentsFromSession(sessionExchanges).catch(() => {});
       }
-      continue;
+      await restartWakeWordListener();
+      return;
     }
 
     if (isJunk(transcript)) {
@@ -1011,9 +1018,20 @@ export async function triggerConversation(): Promise<void> {
         // 200 ms gap
         await new Promise(r => setTimeout(r, 200));
       }
-    } catch (e) {
-      console.warn('[Conversation] error:', e);
-      await new Promise(r => setTimeout(r, 1000));
+    } catch (err) {
+      console.error('[Conversation] turn failed:', err);
+      orbWin?.webContents.send('orb:state', 'idle');
+      orbWin?.webContents.send('axon:activity', '');
+      conversationActive = false;
+      stopConversationTimer();
+      history.splice(0, history.length);
+      if (sessionExchanges.length > 0) {
+        saveRecentSession(sessionExchanges);
+        extractAndSaveFacts(sessionExchanges).catch(() => {});
+        extractCommitmentsFromSession(sessionExchanges).catch(() => {});
+      }
+      await restartWakeWordListener();
+      return;
     }
   }
 
