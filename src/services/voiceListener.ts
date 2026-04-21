@@ -37,6 +37,7 @@ let savedSetOrbState: StateCallback | null = null;
 
 let inConversation      = false;
 let wakeWordLoopRunning = false;
+let micSessionActive    = false;  // true while a persistent mic:start session is open
 
 /** Gate: true while a conversation is active — persistent loop pauses when set. */
 export function setInConversation(val: boolean): void  { inConversation = val; }
@@ -51,6 +52,14 @@ export function isCurrentlyListening(): boolean {
 ipcMain.on('mic:ready', () => {
   rendererMicReady = true;
   console.log('[VoiceListener] renderer mic ready');
+});
+
+ipcMain.on('mic:died', () => {
+  console.warn('[VoiceListener] mic:died — attempting recovery');
+  micSessionActive = false;
+  if (wakeWordLoopRunning && !inConversation) {
+    startMicSession();
+  }
 });
 
 export function setOrbWindow(win: BrowserWindow): void {
@@ -497,8 +506,30 @@ function recordSoxChunk(secs: number): Promise<Buffer> {
 // ── Persistent wake word loop ─────────────────────────────────────────────────
 
 /**
+ * Starts the renderer mic and keeps it open for the lifetime of the persistent
+ * wake word loop. Safe to call multiple times — no-ops if already active.
+ */
+function startMicSession(): void {
+  if (micSessionActive || process.platform !== 'darwin') return;
+  micSessionActive = true;
+  if (rendererMicReady && orbWin && !orbWin.isDestroyed()) {
+    orbWin.webContents.send('mic:start');
+    console.log('[VoiceListener] mic session started (persistent)');
+  } else {
+    // Renderer not ready yet — send mic:start once it reports in
+    ipcMain.once('mic:ready', () => {
+      if (micSessionActive && orbWin && !orbWin.isDestroyed()) {
+        orbWin.webContents.send('mic:start');
+        console.log('[VoiceListener] mic session started (delayed — waited for mic:ready)');
+      }
+    });
+  }
+}
+
+/**
  * Collect one WINDOW_MS window of audio.
- * macOS: accumulates IPC mic chunks; Windows: SoX chunk.
+ * macOS: accumulates IPC mic chunks from the already-open session (no mic:start/stop).
+ * Windows: SoX chunk (unchanged).
  */
 async function listenForOneChunk(): Promise<Buffer> {
   if (process.platform !== 'darwin') {
@@ -520,19 +551,9 @@ async function listenForOneChunk(): Promise<Buffer> {
       if (finished) return;
       finished = true;
       ipcMain.removeListener('mic:chunk', chunkHandler);
-      if (orbWin && !orbWin.isDestroyed()) orbWin.webContents.send('mic:stop');
       resolve(Buffer.concat(audioChunks));
+      // mic stays open — no mic:stop sent here
     };
-
-    const startMic = () => {
-      if (orbWin && !orbWin.isDestroyed()) orbWin.webContents.send('mic:start');
-    };
-
-    if (rendererMicReady) {
-      startMic();
-    } else {
-      ipcMain.once('mic:ready', startMic);
-    }
 
     setTimeout(finish, WINDOW_MS);
   });
@@ -555,6 +576,9 @@ export async function startPersistentWakeWordLoop(
   }
   wakeWordLoopRunning = true;
   console.log('[VoiceListener] starting persistent wake word loop');
+
+  // Start mic ONCE — keep it alive for the whole loop
+  startMicSession();
 
   while (wakeWordLoopRunning) {
     try {
@@ -613,6 +637,13 @@ export async function startPersistentWakeWordLoop(
 export function stopPersistentWakeWordLoop(): void {
   wakeWordLoopRunning = false;
   listeningActive     = false;
+  if (micSessionActive) {
+    micSessionActive = false;
+    if (orbWin && !orbWin.isDestroyed()) {
+      orbWin.webContents.send('mic:stop');
+      console.log('[VoiceListener] mic session stopped');
+    }
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

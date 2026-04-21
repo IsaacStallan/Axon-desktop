@@ -119,6 +119,13 @@
       box-shadow: var(--glow);
     }
     .hero-fine { font-size: 12px; color: rgba(232,237,242,0.3); letter-spacing: 0.5px; }
+    .waitlist-link {
+      display: inline-block; margin-top: 4px;
+      font-size: 13px; color: var(--primary); opacity: 0.75;
+      letter-spacing: 0.03em;
+      transition: opacity 0.2s;
+    }
+    .waitlist-link:hover { opacity: 1; }
 
     /* Scroll indicator */
     .scroll-indicator {
@@ -361,6 +368,7 @@
           <a href="#download"><button class="btn-cta">Download for Mac</button></a>
           <a href="#how"><button class="btn-outline">See how it works</button></a>
         </div>
+        <a href="waitlist.html" class="waitlist-link reveal d3">Join the waitlist &rarr;</a>
         <p class="hero-fine reveal d3">macOS 12+ &nbsp;·&nbsp; Free to start &nbsp;·&nbsp; No account required</p>
       </div>
     </div>

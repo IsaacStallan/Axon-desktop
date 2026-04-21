@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Axon — Private Beta</title>
+
+  <!-- Social -->
+  <meta property="og:title" content="Axon — Private Beta">
+  <meta property="og:description" content="An AI that actually knows you. First 100 users, manual onboarding.">
+  <meta property="og:image" content="https://aretica.ai/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg:          #050810;
+      --primary:     #00D4FF;
+      --text:        #e8edf2;
+      --muted:       #3a4a5a;
+      --card-bg:     #0a1018;
+      --card-border: #0d2030;
+      --glow:        0 0 20px rgba(0,212,255,0.15);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      font-size: 16px;
+      line-height: 1.7;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    /* Starfield */
+    #starfield {
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 0;
+    }
+
+    /* Scanlines */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 1;
+      background: repeating-linear-gradient(
+        to bottom, transparent 0px, transparent 3px,
+        rgba(0,212,255,0.004) 3px, rgba(0,212,255,0.004) 4px
+      );
+    }
+
+    nav, main, footer { position: relative; z-index: 2; }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(5,8,16,0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(0,212,255,0.07);
+      display: flex; align-items: center;
+      padding: 0 56px; height: 64px;
+    }
+    .wordmark {
+      font-family: Georgia, serif;
+      font-size: 16px;
+      letter-spacing: 8px;
+      color: var(--primary);
+    }
+
+    /* ── Main layout ── */
+    main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 80px 24px 120px;
+    }
+
+    .page-inner {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    /* ── Entrance animation states ── */
+    .anim-waveform {
+      opacity: 0;
+      transition: opacity 0.6s ease;
+    }
+    .anim-headline {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .anim-subtext {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .anim-form {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+      width: 100%;
+    }
+
+    .anim-waveform.in  { opacity: 1; }
+    .anim-headline.in  { opacity: 1; transform: none; }
+    .anim-subtext.in   { opacity: 1; transform: none; }
+    .anim-form.in      { opacity: 1; transform: none; }
+
+    /* ── Waveform canvas ── */
+    #axon-canvas {
+      display: block;
+      margin-bottom: 52px;
+      border-radius: 50%;
+      filter: drop-shadow(0 0 32px rgba(0,212,255,0.18));
+    }
+
+    /* ── Eyebrow ── */
+    .eyebrow {
+      font-size: 10px;
+      letter-spacing: 5px;
+      color: var(--primary);
+      opacity: 0.55;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    /* ── Headline ── */
+    h1 {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 52px;
+      font-weight: normal;
+      color: var(--text);
+      letter-spacing: -0.5px;
+      line-height: 1.1;
+      margin-bottom: 24px;
+    }
+
+    /* ── Subtext ── */
+    .subtext {
+      font-size: 17px;
+      color: rgba(232,237,242,0.55);
+      line-height: 1.75;
+      max-width: 420px;
+      margin-bottom: 60px;
+    }
+
+    /* ── Form ── */
+    form {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      text-align: left;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    input, textarea {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      -webkit-appearance: none;
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: rgba(232,237,242,0.18);
+    }
+
+    input:focus, textarea:focus {
+      border-color: rgba(0,212,255,0.4);
+      box-shadow: 0 0 0 3px rgba(0,212,255,0.08);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    /* ── Submit button ── */
+    .submit-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 16px;
+    }
+
+    button[type="submit"] {
+      width: 100%;
+      background: var(--primary);
+      color: #050810;
+      font-weight: 600;
+      padding: 16px;
+      border-radius: 8px;
+      border: none;
+      font-size: 15px;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      transition: opacity 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+    }
+
+    button[type="submit"]:hover {
+      opacity: 0.9;
+      transform: scale(1.01);
+      box-shadow: 0 0 28px rgba(0,212,255,0.35);
+    }
+
+    button[type="submit"]:active {
+      transform: scale(0.99);
+    }
+
+    button[type="submit"]:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .submit-note {
+      font-size: 12px;
+      color: rgba(232,237,242,0.28);
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+
+    .error-msg {
+      font-size: 13px;
+      color: #ff6b6b;
+      text-align: center;
+      display: none;
+    }
+    .error-msg.visible { display: block; }
+
+    /* ── Success state ── */
+    #success-state {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      width: 100%;
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+
+    #success-state.visible {
+      display: flex;
+    }
+
+    #success-state.in {
+      opacity: 1;
+      transform: none;
+    }
+
+    .success-headline {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 40px;
+      font-weight: normal;
+      color: var(--text);
+      margin-bottom: 20px;
+      letter-spacing: -0.3px;
+    }
+
+    .success-sub {
+      font-size: 16px;
+      color: rgba(232,237,242,0.5);
+      line-height: 1.75;
+      max-width: 380px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--card-border);
+      padding: 32px 56px;
+      text-align: center;
+    }
+
+    .footer-copy {
+      font-size: 12px;
+      color: rgba(232,237,242,0.18);
+      letter-spacing: 2px;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      nav { padding: 0 24px; }
+      h1 { font-size: 38px; }
+      .subtext { font-size: 15px; margin-bottom: 48px; }
+      footer { padding: 32px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="starfield"></canvas>
+
+  <!-- Nav -->
+  <nav>
+    <div class="wordmark">ARETICA</div>
+  </nav>
+
+  <!-- Main -->
+  <main>
+    <div class="page-inner">
+
+      <!-- Waveform -->
+      <div class="anim-waveform">
+        <canvas id="axon-canvas" width="200" height="200"></canvas>
+      </div>
+
+      <!-- Headline -->
+      <div class="anim-headline">
+        <p class="eyebrow">Private Beta</p>
+        <h1>Axon is in private beta.</h1>
+      </div>
+
+      <!-- Subtext -->
+      <p class="anim-subtext subtext">
+        We're onboarding the first 100 users manually. If you want an AI that actually knows you — apply below.
+      </p>
+
+      <!-- Form -->
+      <div class="anim-form" id="form-wrap">
+        <!-- Replace REPLACE_WITH_ID with your Formspree form ID from formspree.io -->
+        <form id="waitlist-form" action="https://formspree.io/f/REPLACE_WITH_ID" method="POST">
+          <div class="field">
+            <label for="fname">First name</label>
+            <input type="text" id="fname" name="first_name" placeholder="Your first name" required autocomplete="given-name" />
+          </div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" placeholder="you@example.com" required autocomplete="email" />
+          </div>
+          <div class="field">
+            <label for="question">What do you keep failing to do despite wanting to badly?</label>
+            <textarea id="question" name="question" rows="3" placeholder="Be honest. That's the point." required></textarea>
+          </div>
+          <div class="submit-wrap">
+            <button type="submit" id="submit-btn">Apply for access</button>
+            <p class="submit-note">We read every application. You'll hear back within 24 hours.</p>
+            <p class="error-msg" id="error-msg">Something went wrong. Email us at <a href="mailto:hello@aretica.ai" style="color:#ff6b6b;">hello@aretica.ai</a></p>
+          </div>
+        </form>
+      </div>
+
+      <!-- Success state -->
+      <div id="success-state">
+        <div class="success-headline">You're on the list.</div>
+        <p class="success-sub">We'll be in touch within 24 hours. In the meantime — notice the next time you drift.</p>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-copy">ARETICA &nbsp;·&nbsp; Private Beta 2026</div>
+  </footer>
+
+  <script>
+  // ── Starfield ────────────────────────────────────────────────────────────────
+  (function(){
+    const c = document.getElementById('starfield');
+    const x = c.getContext('2d');
+    let W, H, stars = [];
+    function init(){
+      W = c.width  = window.innerWidth;
+      H = c.height = window.innerHeight;
+      stars = [];
+      for(let i = 0; i < 90; i++) stars.push({
+        x:  Math.random() * W,
+        y:  Math.random() * H,
+        r:  Math.random() * 1.1 + 0.2,
+        vx: (Math.random() - 0.5) * 0.05,
+        vy: (Math.random() - 0.5) * 0.05,
+        a:  Math.random() * 0.4 + 0.08
+      });
+    }
+    function draw(){
+      x.clearRect(0, 0, W, H);
+      for(const s of stars){
+        s.x += s.vx; s.y += s.vy;
+        if(s.x < 0) s.x = W; if(s.x > W) s.x = 0;
+        if(s.y < 0) s.y = H; if(s.y > H) s.y = 0;
+        x.beginPath();
+        x.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        x.fillStyle = `rgba(0,190,230,${s.a})`;
+        x.fill();
+      }
+      requestAnimationFrame(draw);
+    }
+    window.addEventListener('resize', init);
+    init(); draw();
+  })();
+
+  // ── Axon waveform ────────────────────────────────────────────────────────────
+  (function(){
+    const canvas = document.getElementById('axon-canvas');
+    const ctx    = canvas.getContext('2d');
+    const N      = 48;
+    const energy = new Float32Array(N);
+
+    let frame     = 0;
+    let dpr       = window.devicePixelRatio || 1;
+    let succeeded = false;  // switches animation to active state on success
+
+    function resize(){
+      dpr = window.devicePixelRatio || 1;
+      canvas.style.width  = canvas.style.height = '200px';
+      canvas.width        = canvas.height        = 200 * dpr;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    function tick(){
+      // succeeded = active/speaking state: faster phase, more energy
+      const phaseSpeed = succeeded ? 0.014 : 0.006;
+      const energyBase = succeeded ? 0.45  : 0.4;
+      const energyAmp  = succeeded ? 0.55  : 0.6;
+      const smoothing  = succeeded ? 0.055 : 0.034;
+
+      for(let i = 0; i < N; i++){
+        const angleRad = (i / N) * Math.PI * 2;
+        const p        = frame * phaseSpeed;
+        const h        = energyBase + energyAmp * ((Math.sin(4 * (angleRad + p)) + 1) / 2);
+        const target   = 3 + h * 22;
+        energy[i]     += (target - energy[i]) * smoothing;
+      }
+    }
+
+    function draw(){
+      const sz = 200;
+      ctx.resetTransform();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, sz, sz);
+
+      const CX = sz / 2, CY = sz / 2;
+      const RI = CX * 0.48, RM = CX * 0.86;
+      const BW = Math.max(1.4, CX * 0.015);
+
+      // Inner ambient glow
+      const grad = ctx.createRadialGradient(CX, CY, 0, CX, CY, RI * 0.9);
+      grad.addColorStop(0, succeeded ? 'rgba(0,212,255,0.07)' : 'rgba(0,212,255,0.04)');
+      grad.addColorStop(1, 'rgba(0,212,255,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(CX, CY, RI * 0.9, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Rotating arcs — barely-visible structural detail
+      const R1 = CX * 0.92, R2 = CX * 0.99;
+      const rotCW = frame * 0.004, rotCC = -frame * 0.006;
+      for(const [r, rot] of [[R1, rotCW], [R2, rotCC]]){
+        for(let s = 0; s < 4; s++){
+          const st = rot + s * Math.PI / 2;
+          ctx.strokeStyle = 'rgba(0,68,102,0.45)';
+          ctx.lineWidth   = 1;
+          ctx.beginPath();
+          ctx.arc(CX, CY, r, st, st + Math.PI / 2 - 0.22);
+          ctx.stroke();
+        }
+      }
+
+      // Frequency bars
+      const alphaMult = succeeded ? 1.25 : 1;
+      for(let i = 0; i < N; i++){
+        const angle = (i / N) * Math.PI * 2 - Math.PI / 2;
+        const e     = Math.max(0.5, energy[i]);
+        const bl    = Math.min(e, RM - RI);
+        const al    = Math.min(1, (0.18 + 0.5 * (e / 24)) * alphaMult);
+        const x1 = CX + Math.cos(angle) * RI;
+        const y1 = CY + Math.sin(angle) * RI;
+        const x2 = CX + Math.cos(angle) * (RI + bl);
+        const y2 = CY + Math.sin(angle) * (RI + bl);
+        const bg = ctx.createLinearGradient(x1, y1, x2, y2);
+        bg.addColorStop(0, `rgba(0,212,255,${al * 0.4})`);
+        bg.addColorStop(1, `rgba(0,212,255,${al})`);
+        ctx.strokeStyle = bg;
+        ctx.lineWidth   = BW;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+    }
+
+    function loop(){ frame++; tick(); draw(); requestAnimationFrame(loop); }
+    loop();
+
+    // Expose activator for form success
+    window.axonWaveformActivate = function(){ succeeded = true; };
+  })();
+
+  // ── Entrance animations ──────────────────────────────────────────────────────
+  (function(){
+    const waveEl    = document.querySelector('.anim-waveform');
+    const headEl    = document.querySelector('.anim-headline');
+    const subEl     = document.querySelector('.anim-subtext');
+    const formEl    = document.querySelector('.anim-form');
+
+    setTimeout(() => { waveEl.classList.add('in'); },  60);
+    setTimeout(() => { headEl.classList.add('in'); }, 460);
+    setTimeout(() => { subEl.classList.add('in');  }, 660);
+    setTimeout(() => { formEl.classList.add('in'); }, 860);
+  })();
+
+  // ── Form submission ──────────────────────────────────────────────────────────
+  (function(){
+    const form      = document.getElementById('waitlist-form');
+    const formWrap  = document.getElementById('form-wrap');
+    const successEl = document.getElementById('success-state');
+    const submitBtn = document.getElementById('submit-btn');
+    const errorMsg  = document.getElementById('error-msg');
+
+    form.addEventListener('submit', async function(e){
+      e.preventDefault();
+
+      submitBtn.disabled    = true;
+      submitBtn.textContent = 'Sending…';
+      errorMsg.classList.remove('visible');
+
+      try {
+        const data = new FormData(form);
+        const res  = await fetch(form.action, {
+          method:  'POST',
+          body:    data,
+          headers: { 'Accept': 'application/json' }
+        });
+
+        if(res.ok){
+          // Hide form, show success
+          formWrap.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
+          formWrap.style.opacity    = '0';
+          formWrap.style.transform  = 'translateY(-8px)';
+
+          setTimeout(() => {
+            formWrap.style.display = 'none';
+            successEl.classList.add('visible');
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                successEl.classList.add('in');
+              });
+            });
+            // Activate waveform speaking state
+            if(window.axonWaveformActivate) window.axonWaveformActivate();
+          }, 350);
+
+        } else {
+          throw new Error('non-ok response');
+        }
+
+      } catch(err){
+        errorMsg.classList.add('visible');
+        submitBtn.disabled    = false;
+        submitBtn.textContent = 'Apply for access';
+      }
+    });
+  })();
+  </script>
+
+</body>
+</html>
