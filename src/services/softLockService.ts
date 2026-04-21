@@ -3,6 +3,30 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+const MAX_LOCK_DURATION_MINS = 180;  // 3-hour hard cap
+const VIDEO_CALL_APPS = ['Zoom', 'Microsoft Teams', 'FaceTime', 'QuickTime Player', 'Loom'];
+
+/** Returns the name of any running video call app, or null if none. */
+async function getActiveVideoApp(): Promise<string | null> {
+  if (process.platform !== 'darwin') return null;
+  try {
+    const { stdout } = await execAsync(
+      `osascript -e 'tell application "System Events" to get name of every process whose background only is false'`,
+      { timeout: 5_000 },
+    );
+    const running = stdout.trim().split(', ').map(n => n.trim());
+    for (const app of VIDEO_CALL_APPS) {
+      if (running.some(r => r.toLowerCase().includes(app.toLowerCase()))) return app;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+/** Returns true if the transcript contains an emergency override phrase. */
+export function isEmergencyOverridePhrase(transcript: string): boolean {
+  return /axon\s+emergency\s+override|emergency\s+override/i.test(transcript);
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface SoftLockState {
@@ -81,8 +105,26 @@ export async function activateSoftLock(reason: string, durationMinutes: number):
     return;
   }
 
+  // Check for active video call — delay 30 minutes if detected
+  const videoApp = await getActiveVideoApp();
+  if (videoApp) {
+    console.log(`[SoftLock] video call detected (${videoApp}) — delaying 30min`);
+    try {
+      const { speak } = require('./elevenLabsService');
+      await speak(`Soft lock delayed 30 minutes — looks like you're in a ${videoApp} session.`);
+    } catch { /* ignore */ }
+    setTimeout(() => { void activateSoftLock(reason, durationMinutes); }, 30 * 60_000);
+    return;
+  }
+
+  // Hard cap at 3 hours
+  const cappedDuration = Math.min(durationMinutes, MAX_LOCK_DURATION_MINS);
+  if (cappedDuration < durationMinutes) {
+    console.log(`[SoftLock] duration capped at ${MAX_LOCK_DURATION_MINS}min (requested ${durationMinutes}min)`);
+  }
+
   const now     = new Date();
-  const endTime = new Date(now.getTime() + durationMinutes * 60_000).toISOString();
+  const endTime = new Date(now.getTime() + cappedDuration * 60_000).toISOString();
 
   lockState = {
     active:       true,
@@ -93,14 +135,14 @@ export async function activateSoftLock(reason: string, durationMinutes: number):
     overrideUsed: false,
   };
 
-  console.log(`[SoftLock] activating: "${reason}" for ${durationMinutes}min`);
+  console.log(`[SoftLock] activating: "${reason}" for ${cappedDuration}min`);
 
   await saveAndMinimizeWindows();
   onActivateCb?.(lockState);
 
   lockTimer = setTimeout(() => {
     void deactivateSoftLock();
-  }, durationMinutes * 60_000);
+  }, cappedDuration * 60_000);
 }
 
 export async function deactivateSoftLock(): Promise<void> {

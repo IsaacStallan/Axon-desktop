@@ -1,6 +1,7 @@
 import fs   from 'fs';
 import path from 'path';
 import { app } from 'electron';
+import Anthropic from '@anthropic-ai/sdk';
 import { speak, isSpeaking }        from './elevenLabsService';
 import { setLastProactiveMessage } from './proactiveContext';
 import { route }          from './modelRouter';
@@ -14,7 +15,10 @@ import {
   getCommitmentFollowThrough,
   getUserProfile,
 } from './behaviourModel';
+import { adjustThresholds as adjustPatternThresholds } from './patternEngine';
 import { ARETICA_VISION } from './areticaVision';
+
+const reviewClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -163,6 +167,95 @@ function saveReview(text: string, stats: WeeklyStats): void {
   console.log(`[WeeklyReview] saved to memory/reviews/${date}.md`);
 }
 
+// ── Intervention learning loop ─────────────────────────────────────────────────
+
+interface InterventionLearning {
+  bestHours:                       number[];
+  responsiveApps:                  string[];
+  unresponsiveApps:                string[];
+  effectiveStyle:                  'short' | 'direct' | 'explanatory' | 'question';
+  keyInsight:                      string;
+  recommendedThresholdAdjustment:  number;
+}
+
+function saveLearning(learning: InterventionLearning): void {
+  try {
+    const dir = path.join(app.getPath('userData'), 'memory');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'intervention_learning.json'),
+      JSON.stringify({ ...learning, savedAt: new Date().toISOString() }, null, 2),
+      'utf8',
+    );
+    console.log('[Learning] saved to intervention_learning.json');
+  } catch (e) {
+    console.warn('[Learning] save failed:', e);
+  }
+}
+
+export async function runInterventionLearning(): Promise<void> {
+  const allInterventions = getRecentInterventions(14);
+  if (allInterventions.length < 5) {
+    console.log('[Learning] not enough intervention data yet');
+    return;
+  }
+
+  const recent  = allInterventions.slice(-50);
+  const worked  = recent.filter(i => i.courseCorrected === true);
+  const failed  = recent.filter(i => i.courseCorrected === false && i.userResponded);
+
+  const prompt =
+    `Analyse these intervention outcomes for Isaac:\n\n` +
+    `WORKED (${worked.length} that course corrected):\n` +
+    worked.map(i =>
+      `- Type: ${i.type}, App: ${i.appContext}, Hour: ${new Date(i.timestamp).getHours()}:00, ` +
+      `Message: "${i.message.slice(0, 80)}"`
+    ).join('\n') + '\n\n' +
+    `FAILED (${failed.length} that did not course correct):\n` +
+    failed.map(i =>
+      `- Type: ${i.type}, App: ${i.appContext}, Hour: ${new Date(i.timestamp).getHours()}:00, ` +
+      `Message: "${i.message.slice(0, 80)}"`
+    ).join('\n') + '\n\n' +
+    `Return ONLY valid JSON:\n` +
+    `{\n` +
+    `  "bestHours": [number],\n` +
+    `  "responsiveApps": [string],\n` +
+    `  "unresponsiveApps": [string],\n` +
+    `  "effectiveStyle": "short"|"direct"|"explanatory"|"question",\n` +
+    `  "keyInsight": "one sentence",\n` +
+    `  "recommendedThresholdAdjustment": number between -10 and 10\n` +
+    `}`;
+
+  try {
+    const resp = await reviewClient.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 400,
+      messages:   [{ role: 'user', content: prompt }],
+    });
+
+    const block = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+    const raw   = block?.text.trim().replace(/^```json?\s*/i, '').replace(/```$/, '').trim() ?? '';
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) { console.warn('[Learning] no JSON in response'); return; }
+
+    const learning: InterventionLearning = JSON.parse(match[0]);
+    saveLearning(learning);
+
+    if (learning.recommendedThresholdAdjustment !== 0) {
+      adjustPatternThresholds(learning.recommendedThresholdAdjustment);
+      console.log(`[Learning] adjusted drift thresholds by ${learning.recommendedThresholdAdjustment}`);
+    }
+
+    const dir = learning.recommendedThresholdAdjustment > 0 ? 'raised' : 'lowered';
+    const abs = Math.abs(learning.recommendedThresholdAdjustment);
+    const summary = `Weekly learning complete. ${learning.keyInsight}${abs > 0 ? ` Thresholds ${dir} by ${abs} points.` : ''}`;
+    if (!isSpeaking) await speak(summary);
+
+  } catch (e) {
+    console.warn('[Learning] intervention learning failed:', e);
+  }
+}
+
 // ── Public: generate and speak review ─────────────────────────────────────────
 
 export async function runWeeklyReview(): Promise<string> {
@@ -210,6 +303,9 @@ export async function runWeeklyReview(): Promise<string> {
     await speak(review);
     saveReview(review, stats);
     adjustThresholds(stats);
+
+    // Run intervention learning loop (fire-and-forget after review)
+    void runInterventionLearning();
 
     return review;
   } catch (e) {

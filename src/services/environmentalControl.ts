@@ -1,10 +1,76 @@
 import { exec }    from 'child_process';
 import { promisify } from 'util';
+import fs   from 'fs';
+import path from 'path';
 import { transcribe }           from './whisperService';
 import { isConversationActive } from './conversationService';
 import { getProductivityScore, getCurrentApp } from './windowMonitor';
 
 const execAsync = promisify(exec);
+
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+
+const appCloseTimestamps: number[] = [];  // rolling timestamps of close actions
+let softLockCountToday  = 0;
+let rateLimitResetDate  = '';
+
+function resetDailyCounts(): void {
+  const today = new Date().toISOString().slice(0, 10);
+  if (rateLimitResetDate !== today) {
+    rateLimitResetDate = today;
+    softLockCountToday = 0;
+  }
+}
+
+function getRecentCloseCount(): number {
+  const cutoff = Date.now() - 60 * 60_000;
+  while (appCloseTimestamps.length > 0 && appCloseTimestamps[0] < cutoff) {
+    appCloseTimestamps.shift();
+  }
+  return appCloseTimestamps.length;
+}
+
+export function checkAppCloseRateLimit(): { allowed: boolean; message?: string } {
+  if (getRecentCloseCount() >= 3) {
+    return {
+      allowed: false,
+      message: "I would have closed that app but I've already acted on your environment three times this hour.",
+    };
+  }
+  return { allowed: true };
+}
+
+export function checkSoftLockRateLimit(): { allowed: boolean; message?: string } {
+  resetDailyCounts();
+  if (softLockCountToday >= 2) {
+    return { allowed: false, message: "Soft lock limit reached for today — you've already locked twice." };
+  }
+  return { allowed: true };
+}
+
+export function recordSoftLock(): void {
+  resetDailyCounts();
+  softLockCountToday++;
+  logEnvAction('soft_lock', {});
+}
+
+function logEnvAction(type: string, details: Record<string, unknown>): void {
+  try {
+    const { app } = require('electron');
+    const dir      = path.join(app.getPath('userData'), 'memory');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const logPath  = path.join(dir, 'environment_log.json');
+    let   log: unknown[] = [];
+    if (fs.existsSync(logPath)) {
+      try { log = JSON.parse(fs.readFileSync(logPath, 'utf8')); } catch { /* ignore */ }
+    }
+    log.push({ type, timestamp: new Date().toISOString(), ...details });
+    if (log.length > 500) log = log.slice(-500);
+    fs.writeFileSync(logPath, JSON.stringify(log, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[EnvControl] logEnvAction failed:', e);
+  }
+}
 
 // ── Drift vector map: app name fragment → replacement app ──────────────────────
 
@@ -203,6 +269,14 @@ export async function executeEnvironmentalAction(
 ): Promise<EnvActionResult> {
   const question = nextForwardQuestion();
 
+  // Rate limit check — max 3 app closes per hour
+  const rateCheck = checkAppCloseRateLimit();
+  if (!rateCheck.allowed) {
+    await speakFn(rateCheck.message!);
+    logEnvAction('rate_limit_close', { appName });
+    return { overridden: false, question };
+  }
+
   if (!isSafeToTarget(appName)) {
     console.log(`[EnvControl] ${appName} — skipped (safety rules)`);
     return { overridden: false, question };
@@ -214,6 +288,9 @@ export async function executeEnvironmentalAction(
     onOverride?.(appName);
     return { overridden: true, question };
   }
+
+  appCloseTimestamps.push(Date.now());
+  logEnvAction('app_close', { appName });
 
   const replacement = getReplacementApp(appName);
   await closeApp(appName);

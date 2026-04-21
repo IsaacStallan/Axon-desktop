@@ -7,8 +7,95 @@ import { getTodayEvents }     from './calendarService';
 import type { Goal }          from './goalService';
 import { getActiveGoals, getLifeGoals } from './goalService';
 import type { Commitment }    from './commitmentTracker';
-import { getRecentPatterns, getTypicalDriftWindows } from './behaviourModel';
+import { getRecentPatterns, getTypicalDriftWindows, getPatternForCurrentContext } from './behaviourModel';
 import { ARETICA_VISION } from './areticaVision';
+
+// ── Morning briefing ──────────────────────────────────────────────────────────
+
+interface NightlyPrep {
+  calendarSummary: string;
+  goalsJson:       string;
+  weeklyPlanDay:   string;
+  patternContext:  string;
+  analysis:        string;
+}
+
+export async function triggerMorningBriefing(): Promise<void> {
+  console.log('[Planning] triggering morning briefing...');
+  const prep     = await generateNightlyPrep();
+  const briefing = prep.analysis;
+  try {
+    const { speak } = require('./elevenLabsService');
+    await speak(briefing);
+  } catch (e) {
+    console.warn('[Planning] morning briefing speak failed:', e);
+  }
+}
+
+async function generateNightlyPrep(): Promise<NightlyPrep> {
+  // Calendar
+  let calendarSummary = 'No events today.';
+  try {
+    const events = await getTodayEvents(1);
+    if (events.length > 0) {
+      calendarSummary = events.map(e => {
+        const h = e.hour; const m = String(e.minute ?? 0).padStart(2, '0');
+        return `${h}:${m} — ${e.title}`;
+      }).join('\n');
+    }
+  } catch { /* proceed without calendar */ }
+
+  // Goals
+  const goals    = getActiveGoals();
+  const goalsJson = JSON.stringify(goals.slice(0, 10).map(g => ({ text: g.text, impact: g.impactScore, status: g.status })));
+
+  // Weekly plan today
+  const plan        = getWeeklyPlan();
+  const today       = new Date().toISOString().slice(0, 10);
+  const dayPlan     = plan?.days?.find(d => d.date === today);
+  const weeklyPlanDay = dayPlan ? JSON.stringify(dayPlan) : 'No structured plan for today.';
+
+  // Behaviour patterns
+  const patternContext = JSON.stringify(getPatternForCurrentContext());
+
+  // Generate briefing
+  const dateStr = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' });
+  const dayName = new Date().toLocaleDateString('en-AU', { weekday: 'long' });
+  const dayNum  = new Date().getDate();
+
+  try {
+    const resp = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 220,
+      messages: [{
+        role: 'user',
+        content:
+          `You are preparing Isaac's morning brief. Today is ${dateStr}.\n\n` +
+          `Calendar:\n${calendarSummary}\n\n` +
+          `Goals: ${goalsJson}\n\n` +
+          `Weekly plan for today: ${weeklyPlanDay}\n\n` +
+          `Yesterday's patterns: ${patternContext}\n\n` +
+          `Generate a morning briefing that:\n` +
+          `1. States the ONE thing that matters most today\n` +
+          `2. Notes any scheduling risks\n` +
+          `3. References one behavioural pattern from yesterday if relevant\n` +
+          `4. Is 4-6 sentences maximum — 30-45 seconds when spoken\n` +
+          `5. Starts with: "${dayName} the ${dayNum}. Here's what matters."\n` +
+          `6. Direct, sharp, Axon voice — no filler\n` +
+          `No markdown. Spoken sentences only.`,
+      }],
+    });
+    const block    = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+    const analysis = block?.text.trim() ?? `${dayName}. Focus on your highest-impact goal today.`;
+    return { calendarSummary, goalsJson, weeklyPlanDay, patternContext, analysis };
+  } catch (e) {
+    console.warn('[Planning] morning briefing generation failed:', e);
+    return {
+      calendarSummary, goalsJson, weeklyPlanDay, patternContext,
+      analysis: `${dayName}. Focus on your highest-impact goal today.`,
+    };
+  }
+}
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
 

@@ -12,6 +12,19 @@ import {
 } from './behaviourModel';
 import { isInGracePeriod } from './environmentalControl';
 
+// ── Adjustable drift thresholds (modified by intervention learning) ────────────
+
+let TIER_PREDICTIVE = 60;
+let TIER_EARLY      = 70;
+let TIER_RECOVERY   = 85;
+
+export function adjustThresholds(adjustment: number): void {
+  TIER_PREDICTIVE = Math.max(50, Math.min(80, TIER_PREDICTIVE + adjustment));
+  TIER_EARLY      = Math.max(60, Math.min(85, TIER_EARLY      + adjustment));
+  TIER_RECOVERY   = Math.max(70, Math.min(95, TIER_RECOVERY   + adjustment));
+  console.log(`[PatternEngine] thresholds adjusted — predictive:${TIER_PREDICTIVE} early:${TIER_EARLY} recovery:${TIER_RECOVERY}`);
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface PatternResult {
@@ -237,9 +250,9 @@ export function analyzeCurrentState(): PatternResult {
 
   // ── Tier ──────────────────────────────────────────────────────────────────
   const tier: PatternResult['tier'] =
-    finalDrift >= 85 ? 'recovery'   :
-    finalDrift >= 70 ? 'early'      :
-                       'predictive';
+    finalDrift >= TIER_RECOVERY   ? 'recovery'   :
+    finalDrift >= TIER_EARLY      ? 'early'      :
+                                    'predictive';
 
   // ── Break recommendation ───────────────────────────────────────────────────
   const continuousFocusMins = getContinuousFocusMinutes();
@@ -257,8 +270,8 @@ export function analyzeCurrentState(): PatternResult {
   const reason = reasons.length > 0 ? reasons.join(', ') : 'nominal';
 
   // Drift score diagnostics — log every analysis so drift pipeline is auditable
-  const thresholds = { predictive: 60, early: 70, recovery: 85 };
-  const willFire   = finalDrift >= thresholds.predictive;
+  const thresholds = { predictive: TIER_PREDICTIVE, early: TIER_EARLY, recovery: TIER_RECOVERY };
+  const willFire   = finalDrift >= TIER_PREDICTIVE;
   console.log(
     `[PatternEngine] app: ${curr.name} (${curr.label}), drift score: ${finalDrift}, ` +
     `tier: ${tier}, threshold: predictive ${thresholds.predictive} / early ${thresholds.early} / recovery ${thresholds.recovery}, ` +

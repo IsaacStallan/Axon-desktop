@@ -15,6 +15,7 @@ import {
   seedDefaultProfileIfMissing,
   getRecentInterventions,
   resetSessionOnStartup,
+  getLastActivityTime,
 } from './behaviourModel';
 import { initCloudSync }    from './cloudSync';
 import { startHeartbeat }  from './deviceCoordinator';
@@ -25,6 +26,34 @@ import { getCurrentScreenSummary } from './screenAwareness';
 
 const POLL_INTERVAL_MS     = 5 * 60_000;   // 5-minute pattern-engine tick
 const PATTERN_UPDATE_EVERY = 2;            // update today's pattern every 2 polls (10 min)
+
+// ── Morning briefing trigger ───────────────────────────────────────────────────
+
+let lastBriefingDate: string | null = null;
+
+async function checkMorningBriefingTrigger(): Promise<void> {
+  const today = new Date().toDateString();
+  if (lastBriefingDate === today) return;
+
+  const hour = new Date().getHours();
+  if (hour < 5 || hour > 12) return;
+
+  const lastActivityMs  = getLastActivityTime();
+  const inactiveMs      = Date.now() - lastActivityMs;
+  const inactiveHours   = inactiveMs / (1000 * 60 * 60);
+
+  // First active period after 4+ hours of inactivity = morning startup
+  if (lastActivityMs === 0 || inactiveHours >= 4) {
+    lastBriefingDate = today;
+    console.log('[DecisionEngine] morning startup detected — triggering briefing');
+    try {
+      const { triggerMorningBriefing } = require('./planningService');
+      await triggerMorningBriefing();
+    } catch (e) {
+      console.warn('[DecisionEngine] morning briefing failed:', e);
+    }
+  }
+}
 
 // ── Snooze state ───────────────────────────────────────────────────────────────
 
@@ -257,6 +286,9 @@ async function poll(): Promise<void> {
 
   // 5. Check today's weekly life plan for wind-down and soft lock timing
   await checkWeeklyPlanTiming();
+
+  // 5a. Morning briefing trigger (first active period of the day)
+  void checkMorningBriefingTrigger();
 
   // 6. Pass to intervention decider — skip if snoozed
   if (isSnoozed()) {

@@ -3,6 +3,41 @@ import path from 'path';
 import { app } from 'electron';
 import Anthropic from '@anthropic-ai/sdk';
 import * as cloudSync from './cloudSync';
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
+
+// ── Optional at-rest encryption for facts.json ────────────────────────────────
+// Enable with: AXON_ENCRYPT_MEMORY=true and AXON_ENCRYPTION_KEY=<strong-secret>
+
+const ENCRYPT_MEMORY = process.env.AXON_ENCRYPT_MEMORY === 'true';
+const ENCRYPTION_KEY = ENCRYPT_MEMORY
+  ? scryptSync(
+      process.env.AXON_ENCRYPTION_KEY ?? 'axon-default-key-change-in-prod',
+      'axon-memory-salt',
+      32,
+    )
+  : null;
+
+function encryptData(data: string): string {
+  if (!ENCRYPTION_KEY) return data;
+  const iv        = randomBytes(16);
+  const cipher    = createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+  const encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]);
+  return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
+
+function decryptData(raw: string): string {
+  if (!ENCRYPTION_KEY) return raw;
+  try {
+    const parts = raw.split(':');
+    if (parts.length !== 2) return raw; // not encrypted format
+    const iv        = Buffer.from(parts[0], 'hex');
+    const encrypted = Buffer.from(parts[1], 'hex');
+    const decipher  = createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+  } catch {
+    return raw; // fallback if decryption fails (e.g. toggling encryption off)
+  }
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -133,14 +168,19 @@ export function getRecentConversations(days: number): string {
 export function getLearnedFacts(): string[] {
   const p = factsPath();
   if (!fs.existsSync(p)) return [];
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return []; }
+  try {
+    const raw  = fs.readFileSync(p, 'utf8');
+    const text = ENCRYPT_MEMORY ? decryptData(raw) : raw;
+    return JSON.parse(text);
+  } catch { return []; }
 }
 
 /**
  * Overwrite the facts array entirely. Used by memory_review and memory_delete tools.
  */
 export function setLearnedFacts(facts: string[]): void {
-  fs.writeFileSync(factsPath(), JSON.stringify(facts, null, 2), 'utf8');
+  const text = JSON.stringify(facts, null, 2);
+  fs.writeFileSync(factsPath(), ENCRYPT_MEMORY ? encryptData(text) : text, 'utf8');
 }
 
 /**
@@ -377,7 +417,7 @@ ${convoText}`;
       console.log(`[Memory] consolidated — ${before} facts → ${merged.length}`);
     }
 
-    fs.writeFileSync(factsPath(), JSON.stringify(merged, null, 2), 'utf8');
+    setLearnedFacts(merged);
     saveFactMeta(meta);
     console.log(`[Memory] +${strings.length} facts saved (total: ${merged.length})`);
 

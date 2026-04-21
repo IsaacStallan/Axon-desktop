@@ -7,229 +7,339 @@
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
-      --cyan:   #00D4FF;
-      --bg:     #080c10;
-      --card:   #0b1018;
-      --border: #0e1e2e;
-      --text:   #8899aa;
-      --hi:     #ccdde8;
-      --cyan-dim: rgba(0,212,255,0.12);
+      --bg:           #050810;
+      --primary:      #00D4FF;
+      --text:         #e8edf2;
+      --muted:        #3a4a5a;
+      --card-bg:      #0a1018;
+      --card-border:  #0d2030;
+      --glow:         0 0 20px rgba(0,212,255,0.15);
+      --radius:       12px;
     }
     html { scroll-behavior: smooth; }
     body {
-      background: var(--bg); color: var(--text);
-      font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
-      font-size: 16px; line-height: 1.6;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      font-size: 16px;
+      line-height: 1.7;
+      overflow-x: hidden;
     }
     a { color: inherit; text-decoration: none; }
 
-    /* scanlines */
+    /* Starfield */
+    #starfield {
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 0;
+    }
+
+    /* Scanlines */
     body::before {
       content: '';
-      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 1;
       background: repeating-linear-gradient(
         to bottom, transparent 0px, transparent 3px,
-        rgba(0,212,255,0.008) 3px, rgba(0,212,255,0.008) 4px
+        rgba(0,212,255,0.004) 3px, rgba(0,212,255,0.004) 4px
       );
     }
+
+    nav, section, footer { position: relative; z-index: 2; }
 
     /* ── Nav ── */
     nav {
       position: sticky; top: 0; z-index: 100;
-      background: rgba(8,12,16,0.92);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--border);
+      background: rgba(5,8,16,0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(0,212,255,0.1);
       display: flex; align-items: center; justify-content: space-between;
-      padding: 0 48px; height: 60px;
+      padding: 0 56px; height: 64px;
     }
     .wordmark {
-      font-family: Georgia, serif; font-size: 18px;
-      letter-spacing: 6px; color: var(--cyan);
+      font-family: Georgia, serif; font-size: 16px;
+      letter-spacing: 8px; color: var(--primary);
     }
     .nav-cta {
-      background: var(--cyan); color: #000;
-      font-size: 12px; letter-spacing: 2px;
-      padding: 9px 24px; cursor: pointer;
-      border: none; font-weight: 600;
-      transition: opacity 0.2s;
+      background: var(--primary); color: #000;
+      font-size: 11px; letter-spacing: 2.5px; font-weight: 700;
+      padding: 10px 28px; cursor: pointer; border: none; border-radius: 4px;
+      transition: opacity 0.2s, box-shadow 0.2s;
     }
-    .nav-cta:hover { opacity: 0.85; }
-
-    /* ── Sections ── */
-    section { position: relative; z-index: 1; }
+    .nav-cta:hover { opacity: 0.9; box-shadow: 0 0 24px rgba(0,212,255,0.45); }
 
     /* ── Hero ── */
     #hero {
       min-height: 100vh;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      padding: 80px 24px 60px;
-      text-align: center;
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 100px 56px 80px;
     }
-    #hero-canvas { display: block; margin-bottom: 40px; }
+    .hero-inner {
+      max-width: 1200px; margin: 0 auto;
+      display: grid; grid-template-columns: 440px 1fr;
+      gap: 80px; align-items: center; width: 100%;
+    }
+    .hero-left { display: flex; justify-content: center; align-items: center; }
+    #hero-canvas {
+      display: block; border-radius: 50%;
+      filter: drop-shadow(0 0 48px rgba(0,212,255,0.22));
+    }
+    .hero-eyebrow {
+      font-size: 10px; letter-spacing: 5px; color: var(--primary);
+      opacity: 0.65; margin-bottom: 24px; text-transform: uppercase;
+    }
     #hero h1 {
       font-family: Georgia, 'Times New Roman', serif;
-      font-size: clamp(32px, 5vw, 56px); font-weight: normal;
-      color: var(--cyan); letter-spacing: 1px;
-      max-width: 700px; line-height: 1.2; margin-bottom: 20px;
+      font-size: 72px; font-weight: normal;
+      color: var(--text); letter-spacing: -1px;
+      line-height: 1.1; margin-bottom: 28px;
     }
-    #hero p {
-      font-size: clamp(15px, 2vw, 18px); color: var(--text);
-      max-width: 560px; line-height: 1.7; margin-bottom: 40px;
+    .hero-sub {
+      font-size: 18px; color: rgba(232,237,242,0.6);
+      max-width: 500px; line-height: 1.7; margin-bottom: 44px;
     }
-    .hero-btns { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+    .hero-btns { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 28px; }
     .btn-cta {
-      background: var(--cyan); color: #000;
-      font-size: 13px; letter-spacing: 2px; font-weight: 600;
-      padding: 14px 36px; border: none; cursor: pointer;
-      transition: opacity 0.2s;
+      background: var(--primary); color: #000;
+      font-size: 12px; letter-spacing: 2.5px; font-weight: 700;
+      padding: 16px 40px; border: none; cursor: pointer; border-radius: 6px;
+      transition: opacity 0.2s, box-shadow 0.2s;
     }
-    .btn-cta:hover { opacity: 0.85; }
+    .btn-cta:hover { opacity: 0.9; box-shadow: 0 0 32px rgba(0,212,255,0.55); }
     .btn-outline {
-      background: transparent; color: var(--cyan);
-      font-size: 13px; letter-spacing: 2px;
-      padding: 13px 36px; border: 1px solid var(--cyan); cursor: pointer;
-      transition: background 0.2s, color 0.2s;
+      background: transparent; color: var(--primary);
+      font-size: 12px; letter-spacing: 2.5px;
+      padding: 15px 40px; border: 1px solid rgba(0,212,255,0.4);
+      cursor: pointer; border-radius: 6px;
+      transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
     }
-    .btn-outline:hover { background: var(--cyan-dim); }
-    .hero-fine {
-      margin-top: 24px; font-size: 12px;
-      color: var(--text); opacity: 0.45; letter-spacing: 0.5px;
+    .btn-outline:hover {
+      background: rgba(0,212,255,0.07);
+      border-color: var(--primary);
+      box-shadow: var(--glow);
+    }
+    .hero-fine { font-size: 12px; color: rgba(232,237,242,0.3); letter-spacing: 0.5px; }
+
+    /* Scroll indicator */
+    .scroll-indicator {
+      position: absolute; bottom: 40px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      animation: scrollBounce 2.4s ease-in-out infinite;
+    }
+    .scroll-indicator-line {
+      width: 1px; height: 36px;
+      background: linear-gradient(to bottom, transparent, var(--primary));
+    }
+    .scroll-indicator svg { color: var(--primary); opacity: 0.5; }
+    @keyframes scrollBounce {
+      0%, 100% { transform: translateX(-50%) translateY(0); opacity: 0.5; }
+      50% { transform: translateX(-50%) translateY(8px); opacity: 0.9; }
     }
 
-    /* ── Section header ── */
-    .section-wrap { max-width: 1080px; margin: 0 auto; padding: 96px 32px; }
+    /* ── Scroll reveals ── */
+    .reveal {
+      opacity: 0; transform: translateY(28px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .reveal.in { opacity: 1; transform: none; }
+    .d1 { transition-delay: 100ms; }
+    .d2 { transition-delay: 200ms; }
+    .d3 { transition-delay: 300ms; }
+    .d4 { transition-delay: 400ms; }
+    .float-in {
+      opacity: 0; transform: translateY(24px);
+      transition: opacity 0.55s ease, transform 0.55s ease, box-shadow 0.3s;
+    }
+    .float-in.in { opacity: 1; transform: none; }
+
+    /* ── Shared section ── */
+    .section-wrap { max-width: 1080px; margin: 0 auto; padding: 112px 56px; }
     .section-label {
-      font-size: 10px; letter-spacing: 4px; color: var(--cyan);
-      opacity: 0.7; margin-bottom: 16px; text-transform: uppercase;
+      font-size: 10px; letter-spacing: 5px; color: var(--primary);
+      opacity: 0.6; margin-bottom: 20px; text-transform: uppercase;
     }
     .section-title {
       font-family: Georgia, serif;
-      font-size: clamp(24px, 3vw, 36px); font-weight: normal;
-      color: var(--hi); margin-bottom: 56px; max-width: 560px;
+      font-size: 48px; font-weight: normal;
+      color: var(--text); margin-bottom: 64px;
+      line-height: 1.15; letter-spacing: -0.5px;
     }
 
     /* ── How it works ── */
-    #how { border-top: 1px solid var(--border); }
+    #how { border-top: 1px solid var(--card-border); }
+    .how-container { position: relative; }
+    .how-connector {
+      height: 1px; width: 100%; overflow: hidden; margin-bottom: 2px;
+    }
+    .how-connector-line {
+      height: 1px;
+      background: linear-gradient(to right,
+        transparent 0%, rgba(0,212,255,0.08) 5%,
+        rgba(0,212,255,0.25) 33%, rgba(0,212,255,0.25) 66%,
+        rgba(0,212,255,0.08) 95%, transparent 100%
+      );
+      transform: scaleX(0); transform-origin: left;
+      transition: transform 1.3s cubic-bezier(0.4,0,0.2,1) 0.3s;
+    }
+    .how-connector.in .how-connector-line { transform: scaleX(1); }
     .how-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr);
-      gap: 2px; background: var(--border);
+      display: grid; grid-template-columns: repeat(3,1fr);
+      gap: 2px; background: var(--card-border);
+      border-radius: var(--radius); overflow: hidden;
     }
     .how-card {
-      background: var(--card); padding: 40px 36px;
+      background: var(--card-bg); padding: 48px 40px;
+      position: relative; overflow: hidden;
+      transition: box-shadow 0.3s;
     }
-    .how-num {
-      font-size: 11px; letter-spacing: 3px;
-      color: var(--cyan); opacity: 0.5; margin-bottom: 20px;
+    .how-card::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(0,212,255,0.04) 0%, transparent 60%);
+      opacity: 0; transition: opacity 0.3s;
     }
-    .how-title {
-      font-family: Georgia, serif; font-size: 22px;
-      color: var(--cyan); margin-bottom: 14px;
-    }
-    .how-body { font-size: 14px; color: var(--text); line-height: 1.7; }
+    .how-card:hover { box-shadow: inset 0 0 0 1px rgba(0,212,255,0.22), var(--glow); }
+    .how-card:hover::before { opacity: 1; }
+    .how-num { font-size: 10px; letter-spacing: 4px; color: var(--primary); opacity: 0.35; margin-bottom: 28px; }
+    .how-title { font-family: Georgia, serif; font-size: 24px; color: var(--primary); margin-bottom: 16px; }
+    .how-body { font-size: 14px; color: rgba(232,237,242,0.55); line-height: 1.85; }
 
     /* ── Capabilities ── */
-    #capabilities { border-top: 1px solid var(--border); }
+    #capabilities { border-top: 1px solid var(--card-border); }
     .cap-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 2px; background: var(--border);
+      display: grid; grid-template-columns: repeat(4,1fr);
+      gap: 2px; background: var(--card-border);
+      border-radius: var(--radius); overflow: hidden;
     }
     .cap-item {
-      background: var(--card); padding: 24px 28px;
-      display: flex; align-items: flex-start; gap: 14px;
+      background: var(--card-bg); padding: 28px 30px;
+      display: flex; align-items: flex-start; gap: 16px;
+      transition: transform 0.22s, box-shadow 0.22s;
+      position: relative; z-index: 0;
     }
-    .cap-dot { color: var(--cyan); font-size: 18px; flex-shrink: 0; margin-top: 2px; }
-    .cap-name { font-size: 13px; color: var(--hi); letter-spacing: 0.3px; }
-    .cap-desc { font-size: 11px; color: var(--text); margin-top: 4px; opacity: 0.6; }
+    .cap-item:hover {
+      transform: scale(1.025); z-index: 1;
+      box-shadow: inset 0 0 0 1px rgba(0,212,255,0.28), var(--glow);
+    }
+    .cap-icon { width: 30px; height: 30px; flex-shrink: 0; color: var(--primary); }
+    .cap-item:hover .cap-icon { animation: capPulse 1.4s ease-in-out infinite; }
+    @keyframes capPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.55; transform: scale(0.88); }
+    }
+    .cap-name { font-size: 13px; color: var(--text); font-weight: 500; letter-spacing: 0.2px; }
+    .cap-desc { font-size: 11px; color: rgba(232,237,242,0.4); margin-top: 6px; line-height: 1.55; }
 
     /* ── Pricing ── */
-    #pricing { border-top: 1px solid var(--border); }
-    .pricing-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr);
-      gap: 2px; background: var(--border);
-    }
+    #pricing { border-top: 1px solid var(--card-border); }
+    .pricing-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
     .price-card {
-      background: var(--card); padding: 40px 36px; position: relative;
+      background: var(--card-bg); border: 1px solid var(--card-border);
+      border-radius: var(--radius); padding: 48px 40px;
+      position: relative; transition: transform 0.3s, box-shadow 0.3s;
     }
+    .price-card:hover { transform: translateY(-5px); box-shadow: var(--glow); }
     .price-card.featured {
-      border: 1px solid var(--cyan);
-      background: rgba(0,212,255,0.03);
+      border-color: var(--primary);
+      background: rgba(0,212,255,0.025);
+      animation: featuredPulse 3.5s ease-in-out infinite;
+    }
+    @keyframes featuredPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0,212,255,0), var(--glow); }
+      50% { box-shadow: 0 0 28px 3px rgba(0,212,255,0.14), 0 0 56px 8px rgba(0,212,255,0.05); }
     }
     .price-tag {
-      font-size: 10px; letter-spacing: 3px; color: var(--cyan);
-      background: var(--cyan-dim); padding: 4px 10px;
-      position: absolute; top: -1px; right: 28px;
+      font-size: 9px; letter-spacing: 3px; color: #000; font-weight: 700;
+      background: var(--primary); padding: 5px 14px;
+      position: absolute; top: -1px; right: 32px;
+      border-radius: 0 0 6px 6px;
+      box-shadow: 0 0 20px rgba(0,212,255,0.5);
       display: none;
     }
     .price-card.featured .price-tag { display: block; }
-    .price-tier {
-      font-family: Georgia, serif; font-size: 20px;
-      color: var(--hi); margin-bottom: 8px;
-    }
+    .price-tier { font-family: Georgia, serif; font-size: 20px; color: var(--text); margin-bottom: 12px; }
     .price-amount {
-      font-size: 38px; color: var(--cyan);
-      font-weight: 200; margin-bottom: 4px;
+      font-size: 52px; color: var(--primary);
+      font-weight: 200; margin-bottom: 6px; letter-spacing: -1px;
     }
-    .price-amount span { font-size: 16px; opacity: 0.6; }
-    .price-sub { font-size: 12px; color: var(--text); margin-bottom: 28px; opacity: 0.55; }
+    .price-amount span { font-size: 18px; opacity: 0.5; }
+    .price-sub { font-size: 12px; color: rgba(232,237,242,0.38); margin-bottom: 36px; }
     .price-features { list-style: none; }
     .price-features li {
-      font-size: 13px; color: var(--text);
-      padding: 7px 0; border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: rgba(232,237,242,0.6);
+      padding: 9px 0; border-bottom: 1px solid var(--card-border);
+      display: flex; align-items: center; gap: 12px;
     }
-    .price-features li::before { content: '·'; color: var(--cyan); font-size: 20px; }
+    .price-features li:last-child { border-bottom: none; }
+    .price-features li::before {
+      content: ''; width: 5px; height: 5px; flex-shrink: 0;
+      background: var(--primary); border-radius: 50%; opacity: 0.65;
+    }
 
-    /* ── Download section ── */
-    #download {
-      border-top: 1px solid var(--border);
-      text-align: center;
-    }
+    /* ── Download ── */
+    #download { border-top: 1px solid var(--card-border); text-align: center; }
     #download .section-wrap { display: flex; flex-direction: column; align-items: center; }
     .download-btn {
-      display: inline-block; background: var(--cyan); color: #000;
-      font-size: 14px; letter-spacing: 2px; font-weight: 700;
-      padding: 18px 48px; margin-top: 16px;
-      cursor: pointer; border: none; transition: opacity 0.2s;
+      display: inline-block; background: var(--primary); color: #000;
+      font-size: 13px; letter-spacing: 2.5px; font-weight: 700;
+      padding: 20px 56px; margin-top: 16px;
+      cursor: pointer; border: none; border-radius: 8px;
+      transition: opacity 0.2s, box-shadow 0.2s;
     }
-    .download-btn:hover { opacity: 0.85; }
-    .download-meta {
-      font-size: 11px; color: var(--text); opacity: 0.45;
-      margin-top: 16px; letter-spacing: 0.5px;
-    }
-    .built-by {
-      font-size: 12px; color: var(--text); opacity: 0.3;
-      margin-top: 32px; letter-spacing: 1px;
-    }
+    .download-btn:hover { opacity: 0.9; box-shadow: 0 0 40px rgba(0,212,255,0.55); }
+    .download-meta { font-size: 12px; color: rgba(232,237,242,0.3); margin-top: 20px; }
+    .built-by { font-size: 12px; color: rgba(232,237,242,0.18); margin-top: 40px; letter-spacing: 2px; }
 
     /* ── Footer ── */
     footer {
-      border-top: 1px solid var(--border); padding: 32px 48px;
+      border-top: 1px solid var(--card-border);
+      padding: 48px 56px;
       display: flex; align-items: center; justify-content: space-between;
-      flex-wrap: wrap; gap: 16px;
+      flex-wrap: wrap; gap: 24px;
     }
+    .footer-left { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+    #footer-canvas { display: block; opacity: 0.45; }
     .footer-wordmark {
-      font-family: Georgia, serif; font-size: 14px;
-      letter-spacing: 5px; color: var(--cyan); opacity: 0.5;
+      font-family: Georgia, serif; font-size: 13px;
+      letter-spacing: 6px; color: var(--primary); opacity: 0.4;
     }
-    .footer-right { font-size: 12px; color: var(--text); opacity: 0.35; }
-    .footer-links { display: flex; gap: 24px; }
-    .footer-links a:hover { color: var(--cyan); }
+    .footer-right { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+    .footer-links { display: flex; gap: 28px; }
+    .footer-links a { font-size: 12px; color: rgba(232,237,242,0.32); transition: color 0.2s; }
+    .footer-links a:hover { color: var(--primary); }
+    .footer-copy { font-size: 12px; color: rgba(232,237,242,0.18); }
 
     /* ── Responsive ── */
-    @media (max-width: 768px) {
+    @media (max-width: 900px) {
+      .hero-inner { grid-template-columns: 1fr; gap: 48px; text-align: center; }
+      .hero-left { justify-content: center; }
+      #hero h1 { font-size: 48px; }
+      .hero-btns { justify-content: center; }
+      .hero-sub { margin: 0 auto 44px; }
+      .section-title { font-size: 36px; }
       nav { padding: 0 24px; }
+      .section-wrap { padding: 80px 24px; }
+      footer { padding: 40px 24px; }
+    }
+    @media (max-width: 768px) {
       .how-grid { grid-template-columns: 1fr; }
+      .how-connector { display: none; }
+      .cap-grid { grid-template-columns: repeat(2,1fr); }
       .pricing-grid { grid-template-columns: 1fr; }
-      footer { flex-direction: column; text-align: center; }
+      footer { flex-direction: column; align-items: center; text-align: center; }
+      .footer-left { align-items: center; }
+      .footer-right { align-items: center; }
     }
     @media (max-width: 480px) {
+      #hero h1 { font-size: 36px; }
       .hero-btns { flex-direction: column; align-items: center; }
+      .cap-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
+
+  <canvas id="starfield"></canvas>
 
   <!-- Nav -->
   <nav>
@@ -239,36 +349,52 @@
 
   <!-- Hero -->
   <section id="hero">
-    <canvas id="hero-canvas" width="260" height="260"></canvas>
-    <h1>The AI that makes you more of yourself</h1>
-    <p>Axon watches. Intervenes. Executes. So you can focus on what actually matters.</p>
-    <div class="hero-btns">
-      <a href="#download"><button class="btn-cta">Download for Mac</button></a>
-      <a href="#how"><button class="btn-outline">See how it works</button></a>
+    <div class="hero-inner">
+      <div class="hero-left">
+        <canvas id="hero-canvas" width="400" height="400"></canvas>
+      </div>
+      <div class="hero-right">
+        <div class="hero-eyebrow reveal">Axon Desktop · macOS</div>
+        <h1 class="reveal d1">The AI that makes you more of yourself</h1>
+        <p class="hero-sub reveal d2">Axon watches. Intervenes. Executes. So you can focus on what actually matters.</p>
+        <div class="hero-btns reveal d3">
+          <a href="#download"><button class="btn-cta">Download for Mac</button></a>
+          <a href="#how"><button class="btn-outline">See how it works</button></a>
+        </div>
+        <p class="hero-fine reveal d3">macOS 12+ &nbsp;·&nbsp; Free to start &nbsp;·&nbsp; No account required</p>
+      </div>
     </div>
-    <p class="hero-fine">macOS 12+ &nbsp;·&nbsp; Free to start &nbsp;·&nbsp; No account required</p>
+    <div class="scroll-indicator">
+      <div class="scroll-indicator-line"></div>
+      <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
+        <path d="M1 1L6 7L11 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
   </section>
 
   <!-- How it works -->
   <section id="how">
     <div class="section-wrap">
-      <div class="section-label">How it works</div>
-      <div class="section-title">Three things. Relentlessly.</div>
-      <div class="how-grid">
-        <div class="how-card">
-          <div class="how-num">01</div>
-          <div class="how-title">Watches</div>
-          <p class="how-body">Axon monitors your screen and behaviour in real time. It knows what you're doing before you do. Not a tracker — a witness that remembers.</p>
-        </div>
-        <div class="how-card">
-          <div class="how-num">02</div>
-          <div class="how-title">Intervenes</div>
-          <p class="how-body">When you drift, Axon pulls you back. Not with notifications — with a voice that knows you. Built around your goals, your language, your war statement.</p>
-        </div>
-        <div class="how-card">
-          <div class="how-num">03</div>
-          <div class="how-title">Executes</div>
-          <p class="how-body">Ask Axon to do anything. Research, write, code, control your Mac, send emails, book meetings. It acts, not just answers.</p>
+      <div class="section-label reveal">How it works</div>
+      <div class="section-title reveal d1">Three things. Relentlessly.</div>
+      <div class="how-container">
+        <div class="how-connector"><div class="how-connector-line"></div></div>
+        <div class="how-grid">
+          <div class="how-card reveal">
+            <div class="how-num">01</div>
+            <div class="how-title">Watches</div>
+            <p class="how-body">Axon monitors your screen and behaviour in real time. It knows what you're doing before you do. Not a tracker — a witness that remembers.</p>
+          </div>
+          <div class="how-card reveal d1">
+            <div class="how-num">02</div>
+            <div class="how-title">Intervenes</div>
+            <p class="how-body">When you drift, Axon pulls you back. Not with notifications — with a voice that knows you. Built around your goals, your language, your war statement.</p>
+          </div>
+          <div class="how-card reveal d2">
+            <div class="how-num">03</div>
+            <div class="how-title">Executes</div>
+            <p class="how-body">Ask Axon to do anything. Research, write, code, control your Mac, send emails, book meetings. It acts, not just answers.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -277,39 +403,78 @@
   <!-- Capabilities -->
   <section id="capabilities">
     <div class="section-wrap">
-      <div class="section-label">Capabilities</div>
-      <div class="section-title">Everything you need. Nothing you don't.</div>
+      <div class="section-label reveal">Capabilities</div>
+      <div class="section-title reveal d1">Everything you need. Nothing you don't.</div>
       <div class="cap-grid">
-        <div class="cap-item">
-          <div class="cap-dot">◈</div>
+        <div class="cap-item reveal">
+          <svg class="cap-icon" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.4">
+            <rect x="11" y="2" width="8" height="15" rx="4"/>
+            <path d="M5 15c0 5.523 4.477 10 10 10s10-4.477 10-10"/>
+            <line x1="15" y1="25" x2="15" y2="29"/><line x1="11" y1="29" x2="19" y2="29"/>
+          </svg>
           <div><div class="cap-name">Voice Conversation</div><div class="cap-desc">Wake-word activated, always ready</div></div>
         </div>
-        <div class="cap-item">
-          <div class="cap-dot">◈</div>
+        <div class="cap-item reveal d1">
+          <svg class="cap-icon" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.4">
+            <ellipse cx="15" cy="15" rx="13" ry="7"/>
+            <circle cx="15" cy="15" r="4"/>
+            <circle cx="15" cy="15" r="1.5" fill="currentColor" stroke="none"/>
+          </svg>
           <div><div class="cap-name">Screen Awareness</div><div class="cap-desc">Reads your screen in real time</div></div>
         </div>
-        <div class="cap-item">
-          <div class="cap-dot">◈</div>
+        <div class="cap-item reveal d2">
+          <svg class="cap-icon" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.4">
+            <rect x="2" y="2" width="11" height="11" rx="2"/>
+            <rect x="17" y="2" width="11" height="11" rx="2"/>
+            <rect x="2" y="17" width="11" height="11" rx="2"/>
+            <rect x="17" y="17" width="11" height="11" rx="2"/>
+          </svg>
           <div><div class="cap-name">App Control</div><div class="cap-desc">Opens, closes, and controls any app</div></div>
         </div>
-        <div class="cap-item">
-          <div class="cap-dot">◈</div>
+        <div class="cap-item reveal d3">
+          <svg class="cap-icon" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.4">
+            <circle cx="15" cy="15" r="12"/>
+            <ellipse cx="15" cy="15" rx="5.5" ry="12"/>
+            <line x1="3" y1="15" x2="27" y2="15"/>
+            <line x1="6" y1="9" x2="24" y2="9"/>
+            <line x1="6" y1="21" x2="24" y2="21"/>
+          </svg>
           <div><div class="cap-name">Browser Automation</div><div class="cap-desc">Searches, clicks, extracts at your command</div></div>
         </div>
-        <div class="cap-item">
-          <div class="cap-dot">◈</div>
+        <div class="cap-item reveal">
+          <svg class="cap-icon" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.4">
+            <rect x="2" y="6" width="26" height="18" rx="3"/>
+            <polyline points="2,10 15,18 28,10"/>
+          </svg>
           <div><div class="cap-name">Email &amp; Calendar</div><div class="cap-desc">Gmail and Google Calendar integrated</div></div>
         </div>
-        <div class="cap-item">
-          <div class="cap-dot">◈</div>
+        <div class="cap-item reveal d1">
+          <svg class="cap-icon" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.4">
+            <circle cx="15" cy="15" r="3.5"/>
+            <circle cx="5" cy="9" r="3"/>
+            <circle cx="25" cy="9" r="3"/>
+            <circle cx="5" cy="21" r="3"/>
+            <circle cx="25" cy="21" r="3"/>
+            <line x1="8" y1="10" x2="12" y2="13"/><line x1="22" y1="10" x2="18" y2="13"/>
+            <line x1="8" y1="20" x2="12" y2="17"/><line x1="22" y1="20" x2="18" y2="17"/>
+          </svg>
           <div><div class="cap-name">Sub-Agents</div><div class="cap-desc">Parallel AI agents for complex tasks</div></div>
         </div>
-        <div class="cap-item">
-          <div class="cap-dot">◈</div>
+        <div class="cap-item reveal d2">
+          <svg class="cap-icon" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.4">
+            <rect x="2" y="4" width="26" height="18" rx="3"/>
+            <line x1="11" y1="26" x2="19" y2="26"/>
+            <line x1="15" y1="22" x2="15" y2="26"/>
+          </svg>
           <div><div class="cap-name">PC Monitoring</div><div class="cap-desc">Cross-device awareness, Windows support</div></div>
         </div>
-        <div class="cap-item">
-          <div class="cap-dot">◈</div>
+        <div class="cap-item reveal d3">
+          <svg class="cap-icon" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.4">
+            <path d="M15 3c-4 0-6.5 2-7.5 4.5 0 0-3 1-3 4.5 0 3 2 4.5 4.5 4.5H21c2.5 0 4.5-1.5 4.5-4.5 0-3.5-3-4.5-3-4.5C21.5 5 18.5 3 15 3z"/>
+            <line x1="9" y1="20" x2="9" y2="26"/>
+            <line x1="15" y1="20" x2="15" y2="28"/>
+            <line x1="21" y1="20" x2="21" y2="26"/>
+          </svg>
           <div><div class="cap-name">Behavioural Coaching</div><div class="cap-desc">Learns your patterns, fights your weaknesses</div></div>
         </div>
       </div>
@@ -319,10 +484,10 @@
   <!-- Pricing -->
   <section id="pricing">
     <div class="section-wrap">
-      <div class="section-label">Pricing</div>
-      <div class="section-title">Start free. Scale when you're ready.</div>
+      <div class="section-label reveal">Pricing</div>
+      <div class="section-title reveal d1">Start free. Scale when you're ready.</div>
       <div class="pricing-grid">
-        <div class="price-card">
+        <div class="price-card float-in">
           <div class="price-tier">Free</div>
           <div class="price-amount">$0</div>
           <div class="price-sub">Forever free</div>
@@ -334,10 +499,10 @@
             <li>Goal tracking</li>
           </ul>
         </div>
-        <div class="price-card featured">
+        <div class="price-card featured float-in d1">
           <div class="price-tag">MOST POPULAR</div>
           <div class="price-tier">Pro</div>
-          <div class="price-amount">$29<span>/mo</span></div>
+          <div class="price-amount">$<span id="pro-price">29</span><span>/mo</span></div>
           <div class="price-sub">Billed monthly</div>
           <ul class="price-features">
             <li>Unlimited conversation</li>
@@ -348,9 +513,9 @@
             <li>Weekly AI review</li>
           </ul>
         </div>
-        <div class="price-card">
+        <div class="price-card float-in d2">
           <div class="price-tier">Enterprise</div>
-          <div class="price-amount" style="font-size:26px;padding-top:8px">Contact us</div>
+          <div class="price-amount" style="font-size:28px;padding-top:8px">Contact us</div>
           <div class="price-sub">Custom pricing</div>
           <ul class="price-features">
             <li>Unlimited everything</li>
@@ -368,100 +533,211 @@
   <!-- Download -->
   <section id="download">
     <div class="section-wrap">
-      <div class="section-label">Download</div>
-      <div class="section-title">Get Axon</div>
-      <a href="#"><button class="download-btn">Download for Mac (.dmg)</button></a>
-      <p class="download-meta">v1.0.0 &nbsp;·&nbsp; macOS 12 Monterey or later &nbsp;·&nbsp; Apple Silicon + Intel</p>
-      <p class="built-by">Built by Aretica</p>
+      <div class="section-label reveal">Download</div>
+      <div class="section-title reveal d1">Get Axon</div>
+      <a href="#"><button class="download-btn reveal d2">Download for Mac (.dmg)</button></a>
+      <p class="download-meta reveal d3">v1.0.0 &nbsp;·&nbsp; macOS 12 Monterey or later &nbsp;·&nbsp; Apple Silicon + Intel</p>
+      <p class="built-by reveal d4">Built by Aretica</p>
     </div>
   </section>
 
   <!-- Footer -->
   <footer>
-    <div class="footer-wordmark">ARETICA</div>
+    <div class="footer-left">
+      <canvas id="footer-canvas" width="60" height="60"></canvas>
+      <div class="footer-wordmark">ARETICA</div>
+    </div>
     <div class="footer-right">
       <div class="footer-links">
         <a href="#">Privacy</a>
         <a href="#">Terms</a>
       </div>
-      <div style="margin-top:8px">© 2026 Aretica. All rights reserved.</div>
+      <div class="footer-copy">© 2026 Aretica. All rights reserved.</div>
     </div>
   </footer>
 
-  <!-- Waveform animation -->
   <script>
-    (function () {
-      const canvas = document.getElementById('hero-canvas');
-      const ctx    = canvas.getContext('2d');
-      const N      = 64;
-      const energy = new Float32Array(N);
-      let   frame  = 0;
-      let   dpr    = window.devicePixelRatio || 1;
-
-      function resize() {
-        dpr = window.devicePixelRatio || 1;
-        const s = Math.min(canvas.offsetWidth, 260);
-        canvas.width  = s * dpr;
-        canvas.height = s * dpr;
+  // ── Starfield ────────────────────────────────────────────────────────────────
+  (function(){
+    const c = document.getElementById('starfield');
+    const x = c.getContext('2d');
+    let W, H, stars = [];
+    function init(){
+      W = c.width  = window.innerWidth;
+      H = c.height = window.innerHeight;
+      stars = [];
+      for(let i=0;i<110;i++) stars.push({
+        x: Math.random()*W, y: Math.random()*H,
+        r: Math.random()*1.1+0.2,
+        vx:(Math.random()-0.5)*0.06, vy:(Math.random()-0.5)*0.06,
+        a: Math.random()*0.45+0.08
+      });
+    }
+    function draw(){
+      x.clearRect(0,0,W,H);
+      for(const s of stars){
+        s.x+=s.vx; s.y+=s.vy;
+        if(s.x<0)s.x=W; if(s.x>W)s.x=0;
+        if(s.y<0)s.y=H; if(s.y>H)s.y=0;
+        x.beginPath();
+        x.arc(s.x,s.y,s.r,0,Math.PI*2);
+        x.fillStyle=`rgba(0,190,230,${s.a})`;
+        x.fill();
       }
-      resize();
-      window.addEventListener('resize', resize);
+      requestAnimationFrame(draw);
+    }
+    window.addEventListener('resize',init);
+    init(); draw();
+  })();
 
-      function tick() {
-        for (let i = 0; i < N; i++) {
-          const angleRad = (i / N) * Math.PI * 2;
-          const phase    = frame * 0.008;
-          const h        = 0.4 + 0.6 * ((Math.sin(4 * (angleRad + phase)) + 1) / 2);
-          const target   = 2 + h * 20;
-          energy[i] += (target - energy[i]) * 0.04;
-        }
+  // ── Hero waveform ────────────────────────────────────────────────────────────
+  (function(){
+    const canvas = document.getElementById('hero-canvas');
+    const ctx    = canvas.getContext('2d');
+    const N = 64;
+    const energy = new Float32Array(N);
+    let frame = 0, dpr = window.devicePixelRatio||1;
+
+    function resize(){
+      dpr = window.devicePixelRatio||1;
+      canvas.style.width = canvas.style.height = '400px';
+      canvas.width = canvas.height = 400*dpr;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    function tick(){
+      for(let i=0;i<N;i++){
+        const a = (i/N)*Math.PI*2;
+        const p = frame*0.006;
+        const h = 0.3+0.7*((Math.sin(4*(a+p))+1)/2);
+        const t = 3+h*26;
+        energy[i] += (t-energy[i])*0.034;
       }
+    }
 
-      function draw() {
-        const size = canvas.width / dpr;
-        ctx.resetTransform();
-        ctx.scale(dpr, dpr);
-        ctx.clearRect(0, 0, size, size);
+    function draw(){
+      const sz = 400;
+      ctx.resetTransform(); ctx.scale(dpr,dpr);
+      ctx.clearRect(0,0,sz,sz);
+      const CX=sz/2, CY=sz/2;
+      const RI=CX*0.50, RM=CX*0.88;
+      const R1=CX*0.94, R2=CX*1.01;
+      const BW=Math.max(1.5,CX*0.013);
 
-        const CX = size / 2, CY = size / 2;
-        const R_INNER = CX * 0.55, R_MAX = CX * 0.91;
-        const RING1   = CX * 0.955, RING2 = CX * 1.015;
-        const BAR_W   = Math.max(1.2, CX * 0.014);
+      // Inner glow
+      const g=ctx.createRadialGradient(CX,CY,0,CX,CY,RI*0.85);
+      g.addColorStop(0,'rgba(0,212,255,0.05)');
+      g.addColorStop(1,'rgba(0,212,255,0)');
+      ctx.fillStyle=g;
+      ctx.beginPath(); ctx.arc(CX,CY,RI*0.85,0,Math.PI*2); ctx.fill();
 
-        const rotCW  =  frame * 0.005;
-        const rotCCW = -frame * 0.007;
-        for (const [r, rot] of [[RING1, rotCW], [RING2, rotCCW]]) {
-          ctx.strokeStyle = 'rgba(0,68,85,0.8)';
-          ctx.lineWidth   = 1;
-          for (let seg = 0; seg < 4; seg++) {
-            const start = rot + seg * Math.PI / 2;
-            ctx.beginPath();
-            ctx.arc(CX, CY, r, start, start + Math.PI / 2 - 0.25);
-            ctx.stroke();
-          }
-        }
-
-        for (let i = 0; i < N; i++) {
-          const angle  = (i / N) * Math.PI * 2 - Math.PI / 2;
-          const e      = Math.max(0.5, energy[i]);
-          const barLen = Math.min(e, R_MAX - R_INNER);
-          ctx.strokeStyle = `rgba(0,212,255,0.30)`;
-          ctx.lineWidth   = BAR_W;
+      // Ring arcs
+      const rotCW = frame*0.004, rotCC = -frame*0.006;
+      for(const [r,rot] of [[R1,rotCW],[R2,rotCC]]){
+        for(let s=0;s<4;s++){
+          const st=rot+s*Math.PI/2;
+          ctx.strokeStyle='rgba(0,68,102,0.6)';
+          ctx.lineWidth=1;
           ctx.beginPath();
-          ctx.moveTo(CX + Math.cos(angle) * R_INNER, CY + Math.sin(angle) * R_INNER);
-          ctx.lineTo(CX + Math.cos(angle) * (R_INNER + barLen), CY + Math.sin(angle) * (R_INNER + barLen));
+          ctx.arc(CX,CY,r,st,st+Math.PI/2-0.22);
           ctx.stroke();
         }
       }
 
-      function loop() {
-        frame++;
-        tick();
-        draw();
-        requestAnimationFrame(loop);
+      // Bars
+      for(let i=0;i<N;i++){
+        const angle=(i/N)*Math.PI*2-Math.PI/2;
+        const e=Math.max(0.5,energy[i]);
+        const bl=Math.min(e,RM-RI);
+        const al=0.2+0.45*(e/28);
+        const x1=CX+Math.cos(angle)*RI, y1=CY+Math.sin(angle)*RI;
+        const x2=CX+Math.cos(angle)*(RI+bl), y2=CY+Math.sin(angle)*(RI+bl);
+        const bg=ctx.createLinearGradient(x1,y1,x2,y2);
+        bg.addColorStop(0,`rgba(0,212,255,${al*0.45})`);
+        bg.addColorStop(1,`rgba(0,212,255,${al})`);
+        ctx.strokeStyle=bg; ctx.lineWidth=BW;
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
       }
-      loop();
-    })();
+    }
+
+    function loop(){ frame++; tick(); draw(); requestAnimationFrame(loop); }
+    loop();
+  })();
+
+  // ── Footer waveform ──────────────────────────────────────────────────────────
+  (function(){
+    const canvas = document.getElementById('footer-canvas');
+    const ctx = canvas.getContext('2d');
+    const N=32, energy=new Float32Array(N);
+    let frame=0, dpr=window.devicePixelRatio||1;
+    canvas.width=canvas.height=60*dpr;
+    canvas.style.width=canvas.style.height='60px';
+    function loop(){
+      for(let i=0;i<N;i++){
+        const a=(i/N)*Math.PI*2;
+        energy[i]+=(2+7*((Math.sin(4*(a+frame*0.007))+1)/2)-energy[i])*0.04;
+      }
+      const sz=60, CX=sz/2, CY=sz/2, RI=CX*0.4, RM=CX*0.86;
+      ctx.resetTransform(); ctx.scale(dpr,dpr);
+      ctx.clearRect(0,0,sz,sz);
+      for(let i=0;i<N;i++){
+        const angle=(i/N)*Math.PI*2-Math.PI/2;
+        const bl=Math.min(energy[i],RM-RI);
+        ctx.strokeStyle='rgba(0,212,255,0.32)';
+        ctx.lineWidth=1.2;
+        ctx.beginPath();
+        ctx.moveTo(CX+Math.cos(angle)*RI,CY+Math.sin(angle)*RI);
+        ctx.lineTo(CX+Math.cos(angle)*(RI+bl),CY+Math.sin(angle)*(RI+bl));
+        ctx.stroke();
+      }
+      frame++;
+      requestAnimationFrame(loop);
+    }
+    loop();
+  })();
+
+  // ── Scroll animations ────────────────────────────────────────────────────────
+  (function(){
+    // Hero reveals immediately
+    setTimeout(()=>{
+      document.querySelectorAll('#hero .reveal').forEach(e=>e.classList.add('in'));
+    },80);
+
+    const obs = new IntersectionObserver(entries=>{
+      entries.forEach(e=>{
+        if(e.isIntersecting) e.target.classList.add('in');
+      });
+    },{threshold:0.12});
+
+    document.querySelectorAll('.reveal, .float-in').forEach(el=>{
+      if(!el.closest('#hero')) obs.observe(el);
+    });
+
+    // Connector line
+    const connector = document.querySelector('.how-connector');
+    if(connector){
+      new IntersectionObserver(entries=>{
+        entries.forEach(e=>{ if(e.isIntersecting) e.target.classList.add('in'); });
+      },{threshold:0.4}).observe(connector);
+    }
+
+    // Count-up for Pro price
+    const priceEl = document.getElementById('pro-price');
+    if(priceEl){
+      let triggered=false;
+      new IntersectionObserver(entries=>{
+        entries.forEach(e=>{
+          if(e.isIntersecting && !triggered){
+            triggered=true;
+            let n=0;
+            const step=()=>{ priceEl.textContent=String(Math.min(n+=2,29)); if(n<29)setTimeout(step,35); };
+            setTimeout(step,300);
+          }
+        });
+      },{threshold:0.3}).observe(document.getElementById('pricing'));
+    }
+  })();
   </script>
 
 </body>

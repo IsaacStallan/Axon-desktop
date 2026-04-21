@@ -577,3 +577,14 @@ export function getPatternForCurrentContext(): BehaviourPattern {
 
   return { currentApp, occurrenceCount, avgDriftMinutes, previousApp, previousAppMinutes, commonDays };
 }
+
+/**
+ * Returns the epoch ms timestamp of the most recent app session end.
+ * Used by the morning briefing trigger to detect first-active-of-day.
+ * Returns 0 when no sessions are recorded.
+ */
+export function getLastActivityTime(): number {
+  const sessions = getRecentAppSessions(2);
+  if (sessions.length === 0) return 0;
+  return Math.max(...sessions.map(s => new Date(s.endTime).getTime()));
+}
