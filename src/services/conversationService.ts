@@ -1099,3 +1099,18 @@ export async function triggerConversation(): Promise<void> {
 export function stopConversation(): void {
   conversationActive = false;
 }
+
+export async function triggerProactiveConversation(prompt: string): Promise<void> {
+  if (conversationActive) return;
+  setInConversation(true);
+  try {
+    orbWin?.webContents.send('orb:state', 'speaking');
+    await speak(stripMarkdown(prompt));
+    orbWin?.webContents.send('orb:state', 'idle');
+  } catch (e) {
+    console.warn('[Conversation] proactive speak error:', e);
+  } finally {
+    setInConversation(false);
+  }
+  await triggerConversation();
+}

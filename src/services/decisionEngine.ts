@@ -21,6 +21,7 @@ import { initCloudSync }    from './cloudSync';
 import { startHeartbeat }  from './deviceCoordinator';
 import { syncToObsidian }  from './obsidianSync';
 import { getCurrentScreenSummary } from './screenAwareness';
+import { ensureMicActive } from './voiceListener';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -290,7 +291,10 @@ async function poll(): Promise<void> {
   // 5a. Morning briefing trigger (first active period of the day)
   void checkMorningBriefingTrigger();
 
-  // 6. Pass to intervention decider — skip if snoozed
+  // 6. Safety net — ensure mic is still active
+  ensureMicActive();
+
+  // 7. Pass to intervention decider — skip if snoozed
   if (isSnoozed()) {
     const remMins = Math.ceil((snoozeUntilMs - Date.now()) / 60_000);
     console.log(`[DecisionEngine] snoozed — skipping intervention (${remMins}min remaining)`);

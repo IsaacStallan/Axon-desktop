@@ -36,7 +36,7 @@ const { startScreenMonitor, setOrbWindow: setScreenOrbWindow } = require('./serv
 const { startScreenObserver, setOrbWindow: setObserverOrbWindow } = require('./services/screenObserver');
 const { startEmotionEngine } = require('./services/emotionEngine');
 console.error('[Main] loading conversationService');
-const { triggerConversation, stopConversation, setOrbWindow: setConvOrbWindow, handleInterrupt } = require('./services/conversationService');
+const { triggerConversation, stopConversation, setOrbWindow: setConvOrbWindow, handleInterrupt, triggerProactiveConversation } = require('./services/conversationService');
 const { setOrbWindow: setTtsOrbWindow, speak: elevenLabsSpeak } = require('./services/elevenLabsService');
 const { transcribe: whisperTranscribe } = require('./services/whisperService');
 console.error('[Main] loading briefingService');
@@ -533,9 +533,11 @@ function startFullAxon(): void {
     if (!tray) tray = createTray();
     // Wire soft lock callbacks
     const { setSoftLockCallbacks } = require('./services/softLockService');
+    let pendingSoftLockReason = '';
     setSoftLockCallbacks(
       (state: { reason: string; startTime: string; endTime: string; canOverride: boolean; overrideUsed: boolean }) => {
         // onActivate — show the soft lock window
+        pendingSoftLockReason = state.reason;
         if (!softlockWindow || softlockWindow.isDestroyed()) {
           softlockWindow = createSoftlockWindow();
         }
@@ -555,6 +557,21 @@ function startFullAxon(): void {
           softlockWindow = null;
         }
         console.log('[Main] soft lock window closed');
+        // Ensure wake word loop is still running after soft lock
+        if (!(isWakeWordLoopRunning as () => boolean)()) {
+          console.log('[Main] restarting wake word loop after soft lock deactivation');
+          startWakeWordListener();
+        } else {
+          // Loop is running but mic may have been interrupted — restart mic session
+          console.log('[Main] soft lock ended — ensuring mic session active');
+          orbWindow?.webContents.send('mic:start');
+        }
+        setTimeout(() => {
+          const reason = pendingSoftLockReason || 'your session';
+          void (triggerProactiveConversation as (p: string) => Promise<void>)(
+            `The soft lock for "${reason}" just ended. Isaac has returned. Ask him briefly and directly how it went — one short question. "How was the ${reason.toLowerCase()}?" Nothing more. Wait for his answer.`,
+          );
+        }, 3000);
       },
     );
 

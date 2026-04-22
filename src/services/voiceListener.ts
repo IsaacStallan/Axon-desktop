@@ -49,6 +49,13 @@ export function isCurrentlyListening(): boolean {
   return listeningActive;
 }
 
+export function ensureMicActive(): void {
+  if (!micSessionActive) {
+    console.log('[VoiceListener] mic not active — restarting');
+    startMicSession();
+  }
+}
+
 ipcMain.on('mic:ready', () => {
   rendererMicReady = true;
   console.log('[VoiceListener] renderer mic ready');
