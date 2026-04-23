@@ -162,6 +162,18 @@ export function getRecentConversations(days: number): string {
   return lines.length > 0 ? lines.join('\n') : 'No recent conversation history.';
 }
 
+// ── Session context (in-memory, current session only) ─────────────────────────
+
+const sessionContext: Map<string, string> = new Map();
+
+export function storeSessionContext(key: string, value: string): void {
+  sessionContext.set(key, value);
+}
+
+export function getSessionContext(key: string): string | null {
+  return sessionContext.get(key) ?? null;
+}
+
 /**
  * Returns all persisted facts about Isaac, newest first.
  */

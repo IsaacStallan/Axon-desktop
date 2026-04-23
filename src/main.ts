@@ -29,6 +29,7 @@ console.error('[Main] loading silentMonitor');
 const { startSilentMonitor } = require('./services/silentMonitor');
 console.error('[Main] loading decisionEngine');
 const { startDecisionLoop, snoozeInterventions, checkMorningBriefingTrigger } = require('./services/decisionEngine');
+const { startCognitiveLoop } = require('./services/cognitiveEngine');
 const { toggleMute, isMuted } = require('./services/muteControl');
 console.error('[Main] loading voiceListener');
 const { stopVoiceListener, setOrbWindow, startPersistentWakeWordLoop, stopPersistentWakeWordLoop, isWakeWordLoopRunning, setInConversation } = require('./services/voiceListener');
@@ -589,7 +590,8 @@ function startFullAxon(): void {
     );
 
     startWindowMonitor();
-    startDecisionLoop(beginConversation);
+    startDecisionLoop(beginConversation);   // setup: seeding, cloud sync, heartbeat, weekly review
+    void (startCognitiveLoop as (fn: () => void) => Promise<void>)(beginConversation);
     startBriefingService(beginConversation);
     startScreenMonitor();
     startScreenObserver();

@@ -344,6 +344,36 @@ async function synthesiseResults(instruction: string, results: AgentResult[]): P
     ?? results.map(r => r.output).filter(Boolean).join('\n\n');
 }
 
+// ── Silent background task ────────────────────────────────────────────────────
+
+export function runSilentTask(config: {
+  task:       string;
+  context:    string;
+  model:      'groq' | 'haiku' | 'sonnet';
+  onComplete: (result: string) => void;
+}): void {
+  const model = config.model === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
+
+  void (async () => {
+    try {
+      console.log(`[SubAgent] silent task starting: ${config.task.slice(0, 80)}`);
+      const resp = await client.messages.create({
+        model,
+        max_tokens: 500,
+        messages: [{
+          role:    'user',
+          content: `Context: ${config.context}\nTask: ${config.task}\nComplete this task efficiently. Return only the result, no preamble.`,
+        }],
+      });
+      const text = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text ?? '';
+      config.onComplete(text);
+      console.log('[SubAgent] silent task complete');
+    } catch (err) {
+      console.error('[SubAgent] silent task failed:', err);
+    }
+  })();
+}
+
 // ── Public orchestration entry point ──────────────────────────────────────────
 
 export async function orchestrate(instruction: string): Promise<string> {

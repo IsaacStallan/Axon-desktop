@@ -189,7 +189,7 @@ function refreshTodayPattern(): void {
 // ── Weekly plan timing checks ──────────────────────────────────────────────────
 // Runs each poll. Fires wind-down warning and auto soft-lock once per day.
 
-async function checkWeeklyPlanTiming(): Promise<void> {
+export async function checkWeeklyPlanTiming(): Promise<void> {
   // Don't interfere if a soft lock is already active
   if (getSoftLockState()?.active) return;
 
@@ -329,13 +329,7 @@ export function startDecisionLoop(onTrigger: () => void): void {
   // Start the weekly review scheduler (Sunday 6pm automatic)
   startWeeklyReviewScheduler();
 
-  console.log('[DecisionEngine] starting — 5-minute tick');
-
-  // First poll on next tick (gives window monitor time to get a first sample)
-  setTimeout(() => { void poll(); }, 10_000);
-
-  // Then every 5 minutes
-  setInterval(() => { void poll(); }, POLL_INTERVAL_MS);
+  console.log('[DecisionEngine] setup complete — polling handed to cognitive engine');
 
   // Sync to Obsidian every 30 minutes (fire-and-forget)
   setInterval(() => { void syncToObsidian(); }, 30 * 60_000);

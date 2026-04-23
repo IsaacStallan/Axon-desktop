@@ -11,6 +11,7 @@ import {
   getLearnedFacts,
   extractAndSaveFacts,
   getSoul,
+  getSessionContext,
   type Exchange,
 } from './memoryService';
 import { TOOLS, executeTool } from './toolService';
@@ -546,6 +547,10 @@ Wrong: "Let me add that to your calendar now."
 Right: [calls calendar_write tool] "Done. Added Axon deep work block Monday 2 to 4pm."
 Never describe an action you are about to take. Take it, then report it.
 
+${(() => {
+  const r = getSessionContext('last_silent_task');
+  return r ? `\nBACKGROUND TASK RESULT (completed silently while you were working):\n${r}\n` : '';
+})()}
 CRITICAL SPEECH FORMAT — you are being spoken aloud via text-to-speech:
 - Never use em dashes (—) or en dashes (–). Use commas or just end the sentence.
 - Never use colons to introduce lists. Say "first, then, and finally" instead.
