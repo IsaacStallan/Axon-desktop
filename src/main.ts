@@ -28,7 +28,7 @@ const { getOpenCommitments } = require('./services/commitmentTracker');
 console.error('[Main] loading silentMonitor');
 const { startSilentMonitor } = require('./services/silentMonitor');
 console.error('[Main] loading decisionEngine');
-const { startDecisionLoop, snoozeInterventions } = require('./services/decisionEngine');
+const { startDecisionLoop, snoozeInterventions, checkMorningBriefingTrigger } = require('./services/decisionEngine');
 const { toggleMute, isMuted } = require('./services/muteControl');
 console.error('[Main] loading voiceListener');
 const { stopVoiceListener, setOrbWindow, startPersistentWakeWordLoop, stopPersistentWakeWordLoop, isWakeWordLoopRunning, setInConversation } = require('./services/voiceListener');
@@ -170,7 +170,7 @@ function buildTrayMenu(showUpdate = updateReady): void {
     }, { type: 'separator' as const }] : []),
     {
       label: 'Open Dashboard',
-      click: () => { orbWindow?.show(); orbWindow?.focus(); },
+      click: openDashboard,
     },
     { type: 'separator' as const },
     {
@@ -203,14 +203,7 @@ function createTray(): Tray {
   tray = t;          // assign early so buildTrayMenu() can reference it
   buildTrayMenu();
 
-  t.on('click', () => {
-    if (orbWindow?.isVisible()) {
-      orbWindow.focus();
-    } else {
-      orbWindow?.show();
-      orbWindow?.focus();
-    }
-  });
+  t.on('click', openDashboard);
 
   return t;
 }
@@ -246,6 +239,26 @@ async function getOpenApps(): Promise<Array<{ name: string; lastUsed: number; is
     }));
   } catch {
     return [];
+  }
+}
+
+// ── Dashboard open helper ────────────────────────────────────────────────────
+// Ensures the orb window is visible even if it was somehow destroyed.
+
+function openDashboard(): void {
+  if (!orbWindow || orbWindow.isDestroyed()) {
+    orbWindow = createOrbWindow();
+    setOrbWindow(orbWindow);
+    setConvOrbWindow(orbWindow);
+    setTtsOrbWindow(orbWindow);
+    setSubAgentOrbWindow(orbWindow);
+    setCodingAgentOrbWindow(orbWindow);
+    setScreenOrbWindow(orbWindow);
+    setObserverOrbWindow(orbWindow);
+    orbWindow.show();
+  } else {
+    orbWindow.show();
+    orbWindow.focus();
   }
 }
 
@@ -609,14 +622,21 @@ function startFullAxon(): void {
     });
 
     powerMonitor.on('suspend', () => {
-      console.log('[Main] system suspending — stopping persistent wake word loop');
-      (stopPersistentWakeWordLoop as () => void)();
+      console.log('[Main] system suspending — pausing mic');
+      orbWindow?.webContents.send('mic:stop');
     });
-    powerMonitor.on('resume', () => {
-      console.log('[Main] system resumed — restarting persistent wake word loop in 5 s');
+    powerMonitor.on('resume', async () => {
+      console.log('[Main] system resumed from sleep — restarting mic');
+      await new Promise(r => setTimeout(r, 2000));
+      orbWindow?.webContents.send('mic:restart');
+      if (!(isWakeWordLoopRunning as () => boolean)()) {
+        console.log('[Main] wake word loop was dead — restarting');
+        startWakeWordListener();
+      }
+      // Check morning briefing on lid open (fire-and-forget, guard inside)
       setTimeout(() => {
-        if (!isConversing) startWakeWordListener();
-      }, 5000);
+        void (checkMorningBriefingTrigger as () => Promise<void>)();
+      }, 3000);
     });
 
     console.log('[Main] Axon desktop started');

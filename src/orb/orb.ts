@@ -17,9 +17,11 @@ declare global {
       fromPill:         () => void;
       onMicStart:       (cb: () => void) => void;
       onMicStop:        (cb: () => void) => void;
+      onMicRestart:     (cb: () => void) => void;
       sendMicChunk:     (chunk: Uint8Array) => void;
       sendMicError:     (msg: string) => void;
       sendMicReady:     () => void;
+      sendMicDied:      () => void;
     };
   }
 }
@@ -512,46 +514,61 @@ let micContext:   AudioContext | null = null;
 let micProcessor: ScriptProcessorNode | null = null;
 let micChunkCount = 0;
 
+async function startMic(): Promise<void> {
+  micStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,   // remove Axon TTS echo
+      noiseSuppression: true,   // reduce ambient noise
+      autoGainControl:  false,  // keep levels consistent for RMS gate
+      channelCount:     1,
+    },
+    video: false,
+  });
+  console.log('[Orb] getUserMedia granted');
+  micContext = new AudioContext({ sampleRate: 24000 });
+  await micContext.resume();
+  console.log('[Orb] AudioContext state:', micContext.state);
+
+  const source = micContext.createMediaStreamSource(micStream);
+  // 4096-sample buffer ≈ 170ms at 24kHz
+  micProcessor = micContext.createScriptProcessor(4096, 1, 1);
+
+  micChunkCount = 0;
+  micProcessor.onaudioprocess = (e: AudioProcessingEvent) => {
+    const float32 = e.inputBuffer.getChannelData(0);
+    const int16   = new Int16Array(float32.length);
+    for (let i = 0; i < float32.length; i++) {
+      // 0.5 gain matches SoX 'vol 0.5' used on Windows
+      const s = float32[i] * 0.5;
+      int16[i] = Math.max(-32768, Math.min(32767, s * 32768));
+    }
+    const chunk = new Uint8Array(int16.buffer);
+    if (micChunkCount === 0 || micChunkCount % 50 === 0) {
+      console.log('[Orb] sendMicChunk #' + micChunkCount + ', bytes:', chunk.byteLength);
+    }
+    micChunkCount++;
+    window.axon.sendMicChunk(chunk);
+  };
+
+  source.connect(micProcessor);
+  micProcessor.connect(micContext.destination);
+}
+
+async function stopMic(): Promise<void> {
+  micProcessor?.disconnect();
+  micProcessor = null;
+  if (micContext) {
+    await micContext.close();
+    micContext = null;
+  }
+  micStream?.getTracks().forEach(t => t.stop());
+  micStream = null;
+}
+
 window.axon.onMicStart(async () => {
   console.log('[Orb] mic:start received, requesting getUserMedia...');
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,   // remove Axon TTS echo
-        noiseSuppression: true,   // reduce ambient noise
-        autoGainControl:  false,  // keep levels consistent for RMS gate
-        channelCount:     1,
-      },
-      video: false,
-    });
-    console.log('[Orb] getUserMedia granted');
-    micContext = new AudioContext({ sampleRate: 24000 });
-    await micContext.resume();
-    console.log('[Orb] AudioContext state:', micContext.state);
-
-    const source = micContext.createMediaStreamSource(micStream);
-    // 4096-sample buffer ≈ 170ms at 24kHz
-    micProcessor = micContext.createScriptProcessor(4096, 1, 1);
-
-    micChunkCount = 0;
-    micProcessor.onaudioprocess = (e: AudioProcessingEvent) => {
-      const float32 = e.inputBuffer.getChannelData(0);
-      const int16   = new Int16Array(float32.length);
-      for (let i = 0; i < float32.length; i++) {
-        // 0.5 gain matches SoX 'vol 0.5' used on Windows
-        const s = float32[i] * 0.5;
-        int16[i] = Math.max(-32768, Math.min(32767, s * 32768));
-      }
-      const chunk = new Uint8Array(int16.buffer);
-      if (micChunkCount === 0 || micChunkCount % 50 === 0) {
-        console.log('[Orb] sendMicChunk #' + micChunkCount + ', bytes:', chunk.byteLength);
-      }
-      micChunkCount++;
-      window.axon.sendMicChunk(chunk);
-    };
-
-    source.connect(micProcessor);
-    micProcessor.connect(micContext.destination);
+    await startMic();
   } catch (err) {
     console.error('[Orb] getUserMedia failed:', err);
     window.axon.sendMicError(String(err));
@@ -559,13 +576,40 @@ window.axon.onMicStart(async () => {
 });
 
 window.axon.onMicStop(() => {
-  micProcessor?.disconnect();
-  micProcessor = null;
-  micContext?.close();
-  micContext = null;
-  micStream?.getTracks().forEach(t => t.stop());
-  micStream = null;
+  void stopMic();
 });
+
+window.axon.onMicRestart(async () => {
+  console.log('[Orb] mic:restart received — resuming AudioContext');
+  try {
+    await stopMic();
+    await new Promise(r => setTimeout(r, 500));
+    await startMic();
+    console.log('[Orb] mic restarted successfully after resume');
+  } catch (err) {
+    console.error('[Orb] mic restart failed:', err);
+    window.axon.sendMicDied();
+  }
+});
+
+// Periodic AudioContext health check — catches silent death after lid open
+setInterval(async () => {
+  if (!micContext) return;
+  if (micContext.state === 'suspended') {
+    console.log('[Orb] AudioContext suspended — attempting resume');
+    try {
+      await micContext.resume();
+      console.log('[Orb] AudioContext resumed successfully');
+    } catch {
+      console.log('[Orb] AudioContext resume failed — sending mic:died');
+      window.axon.sendMicDied();
+    }
+  }
+  if (micContext.state === 'closed') {
+    console.log('[Orb] AudioContext closed — sending mic:died');
+    window.axon.sendMicDied();
+  }
+}, 30000);
 
 console.log('[Orb] sending mic:ready');
 window.axon.sendMicReady();

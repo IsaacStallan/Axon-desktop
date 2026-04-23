@@ -21,10 +21,14 @@ contextBridge.exposeInMainWorld('axon', {
     ipcRenderer.on('mic:start', () => cb()),
   onMicStop: (cb: () => void) =>
     ipcRenderer.on('mic:stop', () => cb()),
+  onMicRestart: (cb: () => void) =>
+    ipcRenderer.on('mic:restart', () => cb()),
   sendMicChunk: (chunk: Uint8Array) =>
     ipcRenderer.send('mic:chunk', chunk),
   sendMicError: (msg: string) =>
     ipcRenderer.send('mic:error', msg),
   sendMicReady: () =>
     ipcRenderer.send('mic:ready'),
+  sendMicDied: () =>
+    ipcRenderer.send('mic:died'),
 });

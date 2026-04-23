@@ -32,7 +32,7 @@ const PATTERN_UPDATE_EVERY = 2;            // update today's pattern every 2 pol
 
 let lastBriefingDate: string | null = null;
 
-async function checkMorningBriefingTrigger(): Promise<void> {
+export async function checkMorningBriefingTrigger(): Promise<void> {
   const today = new Date().toDateString();
   if (lastBriefingDate === today) return;
 
