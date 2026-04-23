@@ -48,6 +48,7 @@ const { getPerformanceStats, getCognitiveStats } = require('./services/behaviour
 const { getDailyTotal, getSessionTotal } = require('./services/costTracker');
 const { isGmailConnected } = require('./services/gmailService');
 const { getAllDeviceStatuses } = require('./services/deviceCoordinator');
+const { getClient: getSupabaseClient } = require('./services/cloudSync');
 console.error('[Main] all imports done');
 
 // ── Global error handlers ─────────────────────────────────────────────────────
@@ -527,6 +528,30 @@ ipcMain.handle('softlock:override', async () => {
   }
 });
 
+// ── Supabase table verification ───────────────────────────────────────────────
+
+async function verifySupabaseTables(): Promise<void> {
+  try {
+    const supabase = (getSupabaseClient as () => import('@supabase/supabase-js').SupabaseClient | null)();
+    if (!supabase) {
+      console.log('[Main] Supabase not configured — skipping phone_activity table check');
+      return;
+    }
+    const { error } = await supabase
+      .from('phone_activity')
+      .select('id')
+      .limit(1);
+    if (error) {
+      console.error('[Main] phone_activity table missing — run SQL setup');
+      console.error('[Main] SQL: create table phone_activity (id uuid default gen_random_uuid() primary key, user_id text, app_name text, timestamp timestamptz default now(), device text default \'iphone\');');
+    } else {
+      console.log('[Main] phone_activity table verified');
+    }
+  } catch (err) {
+    console.error('[Main] Supabase table check failed:', err);
+  }
+}
+
 // ── Full Axon startup ─────────────────────────────────────────────────────────
 // Called either directly from ready (if onboarding already done)
 // or from the onboarding:complete IPC handler.
@@ -590,6 +615,7 @@ function startFullAxon(): void {
     );
 
     startWindowMonitor();
+    void verifySupabaseTables();
     startDecisionLoop(beginConversation);   // setup: seeding, cloud sync, heartbeat, weekly review
     void (startCognitiveLoop as (fn: () => void) => Promise<void>)(beginConversation);
     startBriefingService(beginConversation);

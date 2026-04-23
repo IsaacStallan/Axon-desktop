@@ -1,13 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { execSync } from 'child_process';
 import { getCurrentApp, getSessionLog } from './windowMonitor';
 import { analyzeCurrentState }           from './patternEngine';
 import { getRecentContext }              from './screenAwareness';
 import { getTodayEvents }               from './calendarService';
 import { getActiveGoals }               from './goalService';
-import { getLearnedFacts }              from './memoryService';
-import { storeSessionContext }           from './memoryService';
+import { getLearnedFacts, storeSessionContext } from './memoryService';
 import { getWeeklyPlanForToday }        from './planningService';
 import { getEmotionPromptFragment }     from './emotionEngine';
 import { isSnoozed, checkWeeklyPlanTiming, checkMorningBriefingTrigger } from './decisionEngine';
@@ -27,64 +25,68 @@ import { setLastProactiveMessage }      from './proactiveContext';
 import { recordInterventionFired }      from './rateLimiter';
 import { runSilentTask }                from './subAgentOrchestrator';
 import { recordTokens }                 from './costTracker';
+import * as phoneMonitor                from './phoneMonitor';
 import { ARETICA_VISION }              from './areticaVision';
 
-const execAsync = promisify(exec);
-const client    = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '', maxRetries: 3 });
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '', maxRetries: 3 });
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface DayPlan {
-  date?:              string;
-  deepWorkWindow?:    string;
-  gymOrRunTime?:      string;
+  date?:               string;
+  deepWorkWindow?:     string;
+  gymOrRunTime?:       string;
   laptopWindDownTime?: string;
-  softLockStart?:     string;
-  softLockEnd?:       string;
-  notes?:             string;
+  softLockStart?:      string;
+  softLockEnd?:        string;
+  notes?:              string;
 }
 
 interface ObservationState {
-  activeApp:                    string;
-  activeAppMinutes:             number;
-  previousApp:                  string;
-  previousAppMinutes:           number;
-  currentHour:                  number;
-  currentMinute:                number;
-  dayOfWeek:                    string;
-  timeOfDay:                    'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night';
-  nextEventMinutes:             number | null;
-  nextEventTitle:               string | null;
-  currentEventTitle:            string | null;
-  isInMeeting:                  boolean;
-  driftScore:                   number;
-  driftTier:                    0 | 1 | 2 | 3;
-  sessionFocusMinutes:          number;
-  lastBreakMinutes:             number;
-  lastMovementMinutes:          number;
-  interventionsToday:           number;
-  lastInterventionMinutes:      number;
-  lastInterventionWorked:       boolean;
+  activeApp:                      string;
+  activeAppMinutes:               number;
+  previousApp:                    string;
+  previousAppMinutes:             number;
+  currentHour:                    number;
+  currentMinute:                  number;
+  dayOfWeek:                      string;
+  timeOfDay:                      'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night';
+  nextEventMinutes:               number | null;
+  nextEventTitle:                 string | null;
+  currentEventTitle:              string | null;
+  isInMeeting:                    boolean;
+  driftScore:                     number;
+  driftTier:                      0 | 1 | 2 | 3;
+  sessionFocusMinutes:            number;
+  lastBreakMinutes:               number;
+  lastMovementMinutes:            number;
+  interventionsToday:             number;
+  lastInterventionMinutes:        number;
+  lastInterventionWorked:         boolean;
   consecutiveFailedInterventions: number;
-  openCommitments:              number;
-  todayPriority:                string | null;
-  weeklyPlanToday:              DayPlan | null;
-  relevantFacts:                string[];
-  screenSummary:                string;
-  screenChanged:                boolean;
-  screenProductivitySignal:     'productive' | 'neutral' | 'distraction';
-  readingDetected:              boolean;
-  readingMinutes:               number;
-  macIdleMinutes:               number;
-  phoneUsageInferred:           boolean;
-  unreadUrgentEmails:           number;
-  recentEmailSummary:           string | null;
-  cognitiveCapacity:            number;
-  emotionState:                 string;
-  energyLevel:                  'high' | 'medium' | 'low';
-  lastSpokenToAxonMinutes:      number;
-  axonSnoozed:                  boolean;
-  softLockActive:               boolean;
+  openCommitments:                number;
+  todayPriority:                  string | null;
+  weeklyPlanToday:                DayPlan | null;
+  relevantFacts:                  string[];
+  screenSummary:                  string;
+  screenChanged:                  boolean;
+  screenProductivitySignal:       'productive' | 'neutral' | 'distraction';
+  readingDetected:                boolean;
+  readingMinutes:                 number;
+  macIdleMinutes:                 number;
+  phoneUsageInferred:             boolean;
+  phoneConfirmedDistraction:      boolean;
+  phoneDistractionApp:            string | null;
+  phoneDistractionMinutesAgo:     number | null;
+  phoneSummary:                   string;
+  unreadUrgentEmails:             number;
+  recentEmailSummary:             string | null;
+  cognitiveCapacity:              number;
+  emotionState:                   string;
+  energyLevel:                    'high' | 'medium' | 'low';
+  lastSpokenToAxonMinutes:        number;
+  axonSnoozed:                    boolean;
+  softLockActive:                 boolean;
 }
 
 interface CognitiveDecision {
@@ -101,25 +103,25 @@ interface CognitiveDecision {
 
 // ── Module state ───────────────────────────────────────────────────────────────
 
-let cognitiveLoopRunning = false;
+let cognitiveLoopRunning    = false;
 let onTrigger: (() => void) | null = null;
 let lastConversationEndedAt = Date.now();
-let lastScreenHash = 0;
+let lastScreenHash          = 0;
 
 export function setLastConversationTime(): void {
   lastConversationEndedAt = Date.now();
 }
 
-// ── Mac idle time ──────────────────────────────────────────────────────────────
+// ── Mac idle time (sync, uses ioreg) ──────────────────────────────────────────
 
-async function getMacIdleMinutes(): Promise<number> {
+function getMacIdleMinutes(): number {
   if (process.platform !== 'darwin') return 0;
   try {
-    const { stdout } = await execAsync(
+    const output = execSync(
       `ioreg -c IOHIDSystem | awk '/HIDIdleTime/ {print $NF/1000000000; exit}'`,
-      { timeout: 3_000 },
-    );
-    const secs = parseFloat(stdout.trim());
+      { encoding: 'utf8', timeout: 2_000 },
+    ).trim();
+    const secs = parseFloat(output);
     return isNaN(secs) ? 0 : Math.round(secs / 60);
   } catch {
     return 0;
@@ -151,36 +153,33 @@ async function collectObservations(): Promise<ObservationState> {
   const log     = getSessionLog();
   const pattern = analyzeCurrentState();
 
-  // Previous app from session log
-  const prevEntry = log.length >= 2 ? log[log.length - 2] : null;
+  const prevEntry          = log.length >= 2 ? log[log.length - 2] : null;
   const previousApp        = prevEntry?.name ?? 'none';
   const previousAppMinutes = prevEntry ? Math.round(prevEntry.durationMs / 60_000) : 0;
 
-  // Drift tier mapping
   const driftTier: ObservationState['driftTier'] =
-    pattern.driftProbability < 60     ? 0 :
-    pattern.tier === 'predictive'     ? 1 :
-    pattern.tier === 'early'          ? 2 : 3;
+    pattern.driftProbability < 60 ? 0 :
+    pattern.tier === 'predictive' ? 1 :
+    pattern.tier === 'early'      ? 2 : 3;
 
   // Calendar
   let events: Awaited<ReturnType<typeof getTodayEvents>> = [];
-  try { events = await getTodayEvents(1); } catch { /* no calendar */ }
+  try { events = await getTodayEvents(1); } catch { /* offline */ }
 
   const nowMs        = Date.now();
   const futureEvents = events.filter(e => e.startMs > nowMs);
-  const nextEvent    = futureEvents.length > 0 ? futureEvents[0] : null;
-  const nextEventMinutes  = nextEvent ? Math.round((nextEvent.startMs - nowMs) / 60_000) : null;
+  const nextEvent    = futureEvents[0] ?? null;
+  const nextEventMinutes = nextEvent ? Math.round((nextEvent.startMs - nowMs) / 60_000) : null;
   const currentEvent = events.find(e => e.startMs <= nowMs && (e.startMs + 60 * 60_000) >= nowMs) ?? null;
 
-  // Meeting detection via event title
-  const MEETING_KW = ['meeting', 'call', 'standup', 'sync', 'interview', 'zoom', 'teams'];
+  const MEETING_KW  = ['meeting', 'call', 'standup', 'sync', 'interview', 'zoom', 'teams'];
   const isInMeeting = currentEvent
     ? MEETING_KW.some(k => currentEvent.title.toLowerCase().includes(k))
     : false;
 
-  // Interventions today
-  const todayStr       = now.toISOString().slice(0, 10);
-  const allInterventions  = getRecentInterventions(1);
+  // Interventions
+  const todayStr           = now.toISOString().slice(0, 10);
+  const allInterventions   = getRecentInterventions(1);
   const todayInterventions = allInterventions.filter(r => r.timestamp.startsWith(todayStr));
   const lastIntervention   = todayInterventions[todayInterventions.length - 1] ?? null;
   const lastInterventionMinutes = lastIntervention
@@ -188,7 +187,6 @@ async function collectObservations(): Promise<ObservationState> {
     : 999;
   const lastInterventionWorked = lastIntervention?.courseCorrected === true;
 
-  // Consecutive failed interventions
   const recentSorted = [...allInterventions].reverse();
   let consecutiveFailedInterventions = 0;
   for (const r of recentSorted) {
@@ -197,106 +195,102 @@ async function collectObservations(): Promise<ObservationState> {
   }
 
   // Breaks
-  const allBreaks  = getRecentBreaks(1);
+  const allBreaks   = getRecentBreaks(1);
   const todayBreaks = allBreaks.filter(b => b.timestamp.startsWith(todayStr));
-  const lastBreak  = todayBreaks.length > 0 ? todayBreaks[todayBreaks.length - 1] : null;
+  const lastBreak   = todayBreaks[todayBreaks.length - 1] ?? null;
   const lastBreakMinutes = lastBreak
     ? Math.round((nowMs - new Date(lastBreak.timestamp).getTime()) / 60_000)
     : 999;
 
-  // Cognitive capacity
-  const screenTimeMins = getSystemScreenTimeToday();
-  const cogStats = getCognitiveStats(screenTimeMins);
-
-  // Session focus minutes from pattern engine
+  // Capacity
+  const screenTimeMins      = getSystemScreenTimeToday();
+  const cogStats            = getCognitiveStats(screenTimeMins);
   const sessionFocusMinutes = Math.round(pattern.continuousFocusMins);
 
-  // Goals & plan
   const goals      = getActiveGoals();
   const weeklyPlan = getWeeklyPlanForToday() as DayPlan | null;
-
-  // Facts
   const relevantFacts = getLearnedFacts().slice(-5);
 
   // Screen
   const screenContexts = getRecentContext();
-  const screenCtx      = screenContexts.length > 0 ? screenContexts[screenContexts.length - 1] : null;
+  const screenCtx      = screenContexts[screenContexts.length - 1] ?? null;
   const screenSummary  = screenCtx
     ? `${screenCtx.activeApp} — ${screenCtx.activity}${screenCtx.notes ? ` (${screenCtx.notes})` : ''}`
     : '';
-
   const screenSignalRaw = screenCtx?.productivitySignal ?? 'idle';
   const screenProductivitySignal: ObservationState['screenProductivitySignal'] =
     screenSignalRaw === 'productive' ? 'productive' :
     screenSignalRaw === 'distracted' ? 'distraction' : 'neutral';
-
-  const currentHash    = simpleHash(screenSummary);
-  const screenChanged  = currentHash !== lastScreenHash;
+  const currentHash = simpleHash(screenSummary);
+  const screenChanged = currentHash !== lastScreenHash;
   if (screenChanged) lastScreenHash = currentHash;
 
-  // Mac idle / phone inference
-  const macIdleMinutes   = await getMacIdleMinutes();
-  const phoneUsageInferred =
-    macIdleMinutes > 8 &&
+  // Mac idle (sync)
+  const macIdleMinutes      = getMacIdleMinutes();
+  const phoneUsageInferred  = macIdleMinutes > 8 &&
     (timeOfDay === 'morning' || timeOfDay === 'afternoon');
 
-  // Energy
+  // Phone — run concurrently
+  const [phoneCheck, phoneSummary] = await Promise.all([
+    phoneMonitor.isOnPhoneDistraction(),
+    phoneMonitor.getPhoneSessionSummary(),
+  ]);
+
+  // Energy / capacity
   const energyLevel: ObservationState['energyLevel'] =
     cogStats.cognitiveCapacity >= 70 ? 'high' :
     cogStats.cognitiveCapacity >= 40 ? 'medium' : 'low';
 
-  // Last spoken to Axon
   const lastSpokenToAxonMinutes = Math.round((nowMs - lastConversationEndedAt) / 60_000);
-
-  // Open commitments count
-  const openCommitmentsArr = getOpenCommitments();
-  const openCommitments    = openCommitmentsArr.length;
-  const todayPriority      = weeklyPlan?.notes ?? (goals[0]?.text ?? null);
-
-  // Emotion
-  const emotionState = getEmotionPromptFragment().split('\n')[0] ?? 'neutral';
+  const openCommitments         = getOpenCommitments().length;
+  const todayPriority           = weeklyPlan?.notes ?? (goals[0]?.text ?? null);
+  const emotionState            = getEmotionPromptFragment().split('\n')[0] ?? 'neutral';
 
   return {
-    activeApp:                    curr.name,
-    activeAppMinutes:             Math.round(curr.durationMins),
+    activeApp:                      curr.name,
+    activeAppMinutes:               Math.round(curr.durationMins),
     previousApp,
     previousAppMinutes,
-    currentHour:                  hour,
-    currentMinute:                now.getMinutes(),
-    dayOfWeek:                    now.toLocaleDateString('en-AU', { weekday: 'long' }),
+    currentHour:                    hour,
+    currentMinute:                  now.getMinutes(),
+    dayOfWeek:                      now.toLocaleDateString('en-AU', { weekday: 'long' }),
     timeOfDay,
     nextEventMinutes,
-    nextEventTitle:               nextEvent?.title ?? null,
-    currentEventTitle:            currentEvent?.title ?? null,
+    nextEventTitle:                 nextEvent?.title ?? null,
+    currentEventTitle:              currentEvent?.title ?? null,
     isInMeeting,
-    driftScore:                   pattern.driftProbability,
+    driftScore:                     pattern.driftProbability,
     driftTier,
     sessionFocusMinutes,
     lastBreakMinutes,
-    lastMovementMinutes:          macIdleMinutes,
-    interventionsToday:           todayInterventions.length,
+    lastMovementMinutes:            macIdleMinutes,
+    interventionsToday:             todayInterventions.length,
     lastInterventionMinutes,
     lastInterventionWorked,
     consecutiveFailedInterventions,
     openCommitments,
     todayPriority,
-    weeklyPlanToday:              weeklyPlan,
+    weeklyPlanToday:                weeklyPlan,
     relevantFacts,
     screenSummary,
     screenChanged,
     screenProductivitySignal,
-    readingDetected:              false,
-    readingMinutes:               0,
+    readingDetected:                false,
+    readingMinutes:                 0,
     macIdleMinutes,
     phoneUsageInferred,
-    unreadUrgentEmails:           0,
-    recentEmailSummary:           null,
-    cognitiveCapacity:            cogStats.cognitiveCapacity,
+    phoneConfirmedDistraction:      phoneCheck.confirmed,
+    phoneDistractionApp:            phoneCheck.app,
+    phoneDistractionMinutesAgo:     phoneCheck.minutesAgo,
+    phoneSummary,
+    unreadUrgentEmails:             0,
+    recentEmailSummary:             null,
+    cognitiveCapacity:              cogStats.cognitiveCapacity,
     emotionState,
     energyLevel,
     lastSpokenToAxonMinutes,
-    axonSnoozed:                  isSnoozed(),
-    softLockActive:               getSoftLockState()?.active ?? false,
+    axonSnoozed:                    isSnoozed(),
+    softLockActive:                 getSoftLockState()?.active ?? false,
   };
 }
 
@@ -328,11 +322,11 @@ function actSilentlyDecision(task: string, model: CognitiveDecision['modelTier']
 function evaluateDecision(obs: ObservationState): CognitiveDecision {
 
   // ── Gate 1: Hard blocks ────────────────────────────────────────────────────
-  if (obs.softLockActive)  return watchDecision('Soft lock active', 0);
-  if (obs.axonSnoozed)     return watchDecision('Axon snoozed by user', 0);
-  if (obs.isInMeeting)     return watchDecision('User is in a meeting — never interrupt', 0);
+  if (obs.softLockActive)     return watchDecision('Soft lock active', 0);
+  if (obs.axonSnoozed)        return watchDecision('Axon snoozed by user', 0);
+  if (obs.isInMeeting)        return watchDecision('User is in a meeting — never interrupt', 0);
   if (isConversationActive()) return watchDecision('Conversation already active', 0);
-  if (isSpeaking)          return watchDecision('Already speaking', 0);
+  if (isSpeaking)             return watchDecision('Already speaking', 0);
 
   // ── Gate 2: Critical priority ──────────────────────────────────────────────
   if (obs.sessionFocusMinutes > 300 && obs.lastBreakMinutes > 120) {
@@ -344,13 +338,11 @@ function evaluateDecision(obs: ObservationState): CognitiveDecision {
       `${obs.nextEventTitle} starts in ${obs.nextEventMinutes} minutes`);
   }
 
-  // Check if scheduled soft lock time has passed
   if (obs.weeklyPlanToday?.softLockStart && !obs.softLockActive) {
-    const now     = new Date();
-    const [h, m]  = (obs.weeklyPlanToday.softLockStart).split(':').map(Number);
+    const [h, m]   = (obs.weeklyPlanToday.softLockStart).split(':').map(Number);
     const lockTime = new Date();
     lockTime.setHours(h, m, 0, 0);
-    if (!isNaN(h) && now >= lockTime) {
+    if (!isNaN(h) && new Date() >= lockTime) {
       return blockDecision('Scheduled soft lock time reached');
     }
   }
@@ -387,11 +379,18 @@ function evaluateDecision(obs: ObservationState): CognitiveDecision {
     return speakDecision('medium', 1, 'haiku', 'Tier 1 drift — predictive nudge');
   }
 
-  // ── Gate 5: Phone inference ────────────────────────────────────────────────
-  if (obs.phoneUsageInferred && obs.macIdleMinutes > 15 &&
-      obs.timeOfDay !== 'evening' && obs.timeOfDay !== 'night') {
+  // ── Gate 5: Phone monitoring ───────────────────────────────────────────────
+  // Confirmed iOS Shortcut data takes priority over inference
+  if (obs.phoneConfirmedDistraction) {
+    return speakDecision('high', 2, 'haiku',
+      `Confirmed: ${obs.phoneDistractionApp} opened on iPhone ${obs.phoneDistractionMinutesAgo}min ago while Mac idle`);
+  }
+
+  // Fall back to Mac idle inference when no iOS Shortcut data
+  if (obs.phoneUsageInferred && obs.macIdleMinutes > 12 &&
+      (obs.timeOfDay === 'morning' || obs.timeOfDay === 'afternoon')) {
     return speakDecision('medium', 1, 'haiku',
-      `Mac idle ${obs.macIdleMinutes}min during work hours — phone use inferred`);
+      `Mac idle ${obs.macIdleMinutes}min during work hours — phone use likely`);
   }
 
   // ── Gate 6: Proactive intelligence ────────────────────────────────────────
@@ -459,6 +458,13 @@ async function routeByTier(tier: CognitiveDecision['modelTier'], prompt: string)
 async function executeSpeak(obs: ObservationState, decision: CognitiveDecision): Promise<void> {
   if (isSpeaking || isConversationActive()) return;
 
+  const hasPhoneActivity = obs.phoneSummary &&
+    !obs.phoneSummary.startsWith('No phone activity');
+
+  const phonePart = hasPhoneActivity
+    ? `\nPHONE ACTIVITY: ${obs.phoneSummary}\nIf phone drift is the reason for this intervention, reference it specifically and directly.`
+    : '';
+
   const prompt = `${ARETICA_VISION}
 
 CURRENT OBSERVATION STATE:
@@ -471,11 +477,11 @@ CURRENT OBSERVATION STATE:
 - Energy level: ${obs.energyLevel}
 - Today's priority: ${obs.todayPriority || 'not set'}
 - Next event: ${obs.nextEventTitle ? `${obs.nextEventTitle} in ${obs.nextEventMinutes}min` : 'none'}
-- Phone usage inferred: ${obs.phoneUsageInferred}
+- Mac idle: ${obs.macIdleMinutes}min | Phone inferred: ${obs.phoneUsageInferred} | Confirmed: ${obs.phoneConfirmedDistraction}
 - Screen: ${obs.screenSummary}
 - Open commitments: ${obs.openCommitments}
 - Consecutive failed interventions: ${obs.consecutiveFailedInterventions}
-- Relevant facts: ${obs.relevantFacts.join(', ')}
+- Relevant facts: ${obs.relevantFacts.join(', ')}${phonePart}
 
 DECISION REASON: ${decision.reason}
 INTERVENTION TIER: ${decision.interventionTier}
@@ -487,7 +493,7 @@ Rules:
 - Direct, accurate, no filler
 - Reference specific data from the observation state — not generic advice
 - Tier 1: predictive, gentle. Tier 2: direct, firm. Tier 3: confrontational, use the war statement if needed
-- If phone use is inferred, acknowledge it directly
+- If phone use is confirmed or inferred, name it directly
 - Do not ask questions unless tier 1
 - Silence is better than a bad intervention
 - No markdown, no quotes, just the spoken words
@@ -511,12 +517,12 @@ Rules:
     recordInterventionFired();
 
     logIntervention({
-      timestamp:    new Date().toISOString(),
-      type:         decision.interventionTier === 3 ? 'recovery' :
-                    decision.interventionTier === 2 ? 'early'    : 'predictive',
+      timestamp:     new Date().toISOString(),
+      type:          decision.interventionTier === 3 ? 'recovery' :
+                     decision.interventionTier === 2 ? 'early'    : 'predictive',
       message,
-      appContext:   obs.activeApp,
-      driftMinutes: obs.activeAppMinutes,
+      appContext:    obs.activeApp,
+      driftMinutes:  obs.activeAppMinutes,
       userResponded: false,
     });
 
@@ -580,14 +586,12 @@ export async function startCognitiveLoop(onTriggerFn?: () => void): Promise<void
       const decision = evaluateDecision(obs);
 
       console.log(
-        `[CognitiveEngine] action: ${decision.action} | ` +
-        `reason: ${decision.reason} | confidence: ${decision.confidence}%`,
+        `[CognitiveEngine] Mac idle: ${obs.macIdleMinutes}min | ` +
+        `Phone distraction: ${obs.phoneConfirmedDistraction} | ` +
+        `action: ${decision.action} | reason: ${decision.reason} | confidence: ${decision.confidence}%`,
       );
 
-      // Check weekly plan timing (wind-down warning + auto soft lock)
       await checkWeeklyPlanTiming().catch(() => {});
-
-      // Morning briefing trigger (first active period of the day)
       void checkMorningBriefingTrigger().catch(() => {});
 
       switch (decision.action) {

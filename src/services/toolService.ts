@@ -29,6 +29,8 @@ import { orchestrate } from './subAgentOrchestrator';
 import { updateWakeWord } from './voiceListener';
 import { analyseOnDemand } from './screenAwareness';
 import { syncToObsidian } from './obsidianSync';
+import { generateiOSShortcutInstructions } from './shortcutGenerator';
+import { getPhoneSessionSummary } from './phoneMonitor';
 
 // Pending draft waiting for verbal confirmation before send
 let pendingDraft: DraftResult | null = null;
@@ -558,6 +560,20 @@ export const TOOLS: Anthropic.Tool[] = [
       },
       required: ['task'],
     },
+  },
+
+  // ── Phone monitoring ─────────────────────────────────────────────────────────
+  {
+    name:        'get_ios_shortcut_setup',
+    description: 'Return step-by-step instructions for connecting Isaac\'s iPhone to Axon via an iOS Shortcut. ' +
+                 'Use when Isaac asks "how do I connect my phone?", "set up phone tracking", or "iOS shortcut".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name:        'check_phone_activity',
+    description: 'Check what Isaac has been doing on his phone in the last 30 minutes. ' +
+                 'Use when he asks "what have I been doing on my phone?", "what\'s on my phone?", or "phone activity".',
+    input_schema: { type: 'object', properties: {}, required: [] },
   },
 
   // ── Autonomous coding ─────────────────────────────────────────────────────────
@@ -1146,6 +1162,16 @@ export async function executeTool(
           `(${remMins} min remaining)\n` +
           `Override used: ${state.overrideUsed ? 'yes' : 'no'}`
         );
+      }
+
+      // ── Phone monitoring ───────────────────────────────────────────────────────
+
+      case 'get_ios_shortcut_setup': {
+        return generateiOSShortcutInstructions();
+      }
+
+      case 'check_phone_activity': {
+        return await getPhoneSessionSummary();
       }
 
       default:
