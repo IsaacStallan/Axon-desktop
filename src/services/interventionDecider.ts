@@ -34,7 +34,12 @@ import { AXON_CAPABILITIES }               from './axonCapabilities';
 import { ARETICA_VISION }                  from './areticaVision';
 import type { PatternResult }              from './patternEngine';
 import type { ScreenContext }              from './screenAwareness';
-import { contributeInterventionOutcome, getDaysSinceOnboarding } from './collectiveIntelligence';
+import {
+  contributeInterventionOutcome,
+  getDaysSinceOnboarding,
+  updateLearningStyle,
+  detectMessageStyle,
+} from './collectiveIntelligence';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -156,13 +161,14 @@ export function checkPendingOutcome(): void {
     try {
       const record = getRecentInterventions(7).find(r => r.id === o.id);
       if (record) {
-        const firedDate = new Date(o.firedAt);
-        const firedHour = firedDate.getHours();
-        const timeOfDay =
+        const firedDate    = new Date(o.firedAt);
+        const firedHour    = firedDate.getHours();
+        const timeOfDay    =
           firedHour < 6  ? 'early_morning' :
           firedHour < 12 ? 'morning' :
           firedHour < 17 ? 'afternoon' :
           firedHour < 21 ? 'evening' : 'night';
+        const messageStyle = detectMessageStyle(record.message);
         void contributeInterventionOutcome({
           interventionType:    record.type,
           tier:                record.type === 'recovery' ? 3 : record.type === 'early' ? 2 : 1,
@@ -175,7 +181,9 @@ export function checkPendingOutcome(): void {
           messageLength:       record.message.length,
           courseCorrection:    courseCorrected,
           responseTimeSeconds: 0,
+          messageStyle,
         });
+        void updateLearningStyle(messageStyle, courseCorrected);
       }
     } catch { /* non-blocking */ }
 

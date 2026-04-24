@@ -4,6 +4,82 @@ import path from 'path';
 import { app } from 'electron';
 import { getDeviceId, getClient } from './cloudSync';
 
+// ── Learning style types ───────────────────────────────────────────────────────
+
+export type LearningStyle =
+  | 'direct'    // responds to blunt, no softening
+  | 'question'  // responds to being asked not told
+  | 'casual'    // responds to conversational, informal
+  | 'data'      // responds to specific numbers and patterns
+  | 'silence'   // responds to minimal words, maximum impact
+  | 'challenge'; // responds to being challenged or called out
+
+interface UserLearningProfile {
+  dominantStyle:      LearningStyle;
+  styleScores:        Record<LearningStyle, number>;
+  totalInterventions: number;
+  lastUpdated:        string;
+}
+
+function learningProfilePath(): string {
+  return path.join(app.getPath('userData'), 'memory', 'learning_profile.json');
+}
+
+/** Infer the style of an intervention message from its content. */
+export function detectMessageStyle(message: string): LearningStyle {
+  const lower = message.toLowerCase();
+  const words = message.trim().split(/\s+/).length;
+  if (words <= 6)                                                      return 'silence';
+  if (/\?/.test(message))                                              return 'question';
+  if (/\d+\s*(min|hour|hrs?|%|time|day|week|second)/i.test(message))  return 'data';
+  if (/stop\.|close (it|that)|get back|you know why/i.test(lower))    return 'challenge';
+  if (/\bhey\b|\bman\b|alright|let'?s|gonna|that'?s/i.test(lower))   return 'casual';
+  return 'direct';
+}
+
+export async function updateLearningStyle(
+  messageStyle:    LearningStyle,
+  courseCorrection: boolean,
+): Promise<void> {
+  const profilePath = learningProfilePath();
+
+  let profile: UserLearningProfile = {
+    dominantStyle:      'direct',
+    styleScores:        { direct: 0, question: 0, casual: 0, data: 0, silence: 0, challenge: 0 },
+    totalInterventions: 0,
+    lastUpdated:        new Date().toISOString(),
+  };
+
+  try {
+    if (fs.existsSync(profilePath)) {
+      profile = JSON.parse(fs.readFileSync(profilePath, 'utf8')) as UserLearningProfile;
+    }
+  } catch { /* start fresh */ }
+
+  profile.styleScores[messageStyle] += courseCorrection ? 2 : -1;
+  profile.totalInterventions++;
+  profile.dominantStyle = (
+    Object.entries(profile.styleScores).sort(([, a], [, b]) => b - a)[0][0] as LearningStyle
+  );
+  profile.lastUpdated = new Date().toISOString();
+
+  try {
+    const memDir = path.join(app.getPath('userData'), 'memory');
+    if (!fs.existsSync(memDir)) fs.mkdirSync(memDir, { recursive: true });
+    fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2));
+  } catch (e) {
+    console.warn('[CollectiveIntelligence] failed to save learning profile:', e);
+  }
+}
+
+export function getLearningProfile(): UserLearningProfile | null {
+  try {
+    const p = learningProfilePath();
+    if (!fs.existsSync(p)) return null;
+    return JSON.parse(fs.readFileSync(p, 'utf8')) as UserLearningProfile;
+  } catch { return null; }
+}
+
 // ── Part 1 — Anonymous cohort ID ──────────────────────────────────────────────
 
 let cohortId: string | null = null;
@@ -46,6 +122,7 @@ export async function contributeInterventionOutcome(data: {
   messageLength:       number;
   courseCorrection:    boolean;
   responseTimeSeconds: number;
+  messageStyle?:       LearningStyle;
 }): Promise<void> {
   const supabase = getClient();
   if (!supabase) return; // offline — skip silently
@@ -64,6 +141,7 @@ export async function contributeInterventionOutcome(data: {
       message_length:        data.messageLength,
       course_corrected:      data.courseCorrection,
       response_time_seconds: data.responseTimeSeconds,
+      message_style:         data.messageStyle,
     });
     console.log('[CollectiveIntelligence] intervention outcome contributed');
   } catch (err) {
@@ -179,6 +257,7 @@ create table if not exists collective_interventions (
   drift_score int,
   days_since_onboarding int,
   message_length int,
+  message_style text,
   course_corrected boolean,
   response_time_seconds int,
   created_at timestamptz default now()
