@@ -1,5 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { execSync } from 'child_process';
+import { app } from 'electron';
+import fs   from 'fs';
+import path from 'path';
 import { getCurrentApp, getSessionLog } from './windowMonitor';
 import { analyzeCurrentState }           from './patternEngine';
 import { getRecentContext }              from './screenAwareness';
@@ -108,8 +111,27 @@ let onTrigger: (() => void) | null = null;
 let lastConversationEndedAt = Date.now();
 let lastScreenHash          = 0;
 
+// First-week hourly speak cap
+let speaksThisHour  = 0;
+let speakHourBucket = -1;
+let lastSpeakDateStr = '';
+
 export function setLastConversationTime(): void {
   lastConversationEndedAt = Date.now();
+}
+
+// ── First-week detection ───────────────────────────────────────────────────────
+
+function isFirstWeek(): boolean {
+  try {
+    const data = JSON.parse(
+      fs.readFileSync(path.join(app.getPath('userData'), 'onboarding-complete.json'), 'utf8'),
+    ) as { completedAt: string };
+    const daysSince = (Date.now() - new Date(data.completedAt).getTime()) / (1000 * 60 * 60 * 24);
+    return daysSince <= 7;
+  } catch {
+    return false;
+  }
 }
 
 // ── Mac idle time (sync, uses ioreg) ──────────────────────────────────────────
@@ -328,8 +350,20 @@ function evaluateDecision(obs: ObservationState): CognitiveDecision {
   if (isConversationActive()) return watchDecision('Conversation already active', 0);
   if (isSpeaking)             return watchDecision('Already speaking', 0);
 
+  // ── First-week cap: max 2 proactive speaks per hour ────────────────────────
+  const firstWeek = isFirstWeek();
+  if (firstWeek) {
+    const nowHour = new Date().getHours();
+    if (nowHour !== speakHourBucket) { speaksThisHour = 0; speakHourBucket = nowHour; }
+    if (speaksThisHour >= 2) {
+      return watchDecision('First week — hourly speak cap reached (2/hr)', 50);
+    }
+  }
+
   // ── Gate 2: Critical priority ──────────────────────────────────────────────
   if (obs.sessionFocusMinutes > 300 && obs.lastBreakMinutes > 120) {
+    // Downgrade to tier 2 during first week — too early to be confrontational
+    if (firstWeek) return speakDecision('high', 2, 'haiku', 'Over 5h focus — first week, using tier 2');
     return speakDecision('critical', 3, 'sonnet', 'Over 5h focus, no break in 2h — health risk');
   }
 
@@ -373,7 +407,10 @@ function evaluateDecision(obs: ObservationState): CognitiveDecision {
     );
   }
 
-  if (obs.driftTier === 3) return speakDecision('critical', 3, 'sonnet', 'Tier 3 drift — recovery needed');
+  if (obs.driftTier === 3) {
+    if (firstWeek) return speakDecision('high', 2, 'haiku', 'Tier 3 drift — downgraded to tier 2 (first week)');
+    return speakDecision('critical', 3, 'sonnet', 'Tier 3 drift — recovery needed');
+  }
   if (obs.driftTier === 2) return speakDecision('high',     2, 'haiku',  'Tier 2 drift — early intervention');
   if (obs.driftTier === 1 && obs.energyLevel !== 'low') {
     return speakDecision('medium', 1, 'haiku', 'Tier 1 drift — predictive nudge');
@@ -458,6 +495,14 @@ async function routeByTier(tier: CognitiveDecision['modelTier'], prompt: string)
 async function executeSpeak(obs: ObservationState, decision: CognitiveDecision): Promise<void> {
   if (isSpeaking || isConversationActive()) return;
 
+  // Track hourly speak count
+  speaksThisHour++;
+
+  // First-week: prepend learning note on first speak of each day
+  const todayStr         = new Date().toISOString().slice(0, 10);
+  const firstSpeakToday  = isFirstWeek() && lastSpeakDateStr !== todayStr;
+  if (firstSpeakToday) lastSpeakDateStr = todayStr;
+
   const hasPhoneActivity = obs.phoneSummary &&
     !obs.phoneSummary.startsWith('No phone activity');
 
@@ -497,7 +542,7 @@ Rules:
 - Do not ask questions unless tier 1
 - Silence is better than a bad intervention
 - No markdown, no quotes, just the spoken words
-- Respond with exactly "SKIP" if silence is better right now`;
+- Respond with exactly "SKIP" if silence is better right now${firstSpeakToday ? '\n- This is your first proactive message of the day during Axon\'s learning week. Begin with: "Still learning your patterns — I\'ll get more accurate over time." Then continue with the intervention.' : ''}`;
 
   const message = await routeByTier(decision.modelTier, prompt);
   if (!message || message.trim().toUpperCase() === 'SKIP') return;

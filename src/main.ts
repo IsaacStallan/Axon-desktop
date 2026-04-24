@@ -19,6 +19,14 @@ import * as dotenv from 'dotenv';
 import { autoUpdater } from 'electron-updater';
 dotenv.config();
 
+// Fallback to Aretica shared keys when user hasn't configured their own.
+// Set ARETICA_* at build time to ship a zero-config distribution.
+if (!process.env.ANTHROPIC_API_KEY  && process.env.ARETICA_ANTHROPIC_KEY)     process.env.ANTHROPIC_API_KEY  = process.env.ARETICA_ANTHROPIC_KEY;
+if (!process.env.ELEVENLABS_API_KEY && process.env.ARETICA_ELEVENLABS_KEY)    process.env.ELEVENLABS_API_KEY = process.env.ARETICA_ELEVENLABS_KEY;
+if (!process.env.OPENAI_API_KEY     && process.env.ARETICA_OPENAI_KEY)        process.env.OPENAI_API_KEY     = process.env.ARETICA_OPENAI_KEY;
+if (!process.env.SUPABASE_URL       && process.env.ARETICA_SUPABASE_URL)      process.env.SUPABASE_URL       = process.env.ARETICA_SUPABASE_URL;
+if (!process.env.SUPABASE_ANON_KEY  && process.env.ARETICA_SUPABASE_ANON_KEY) process.env.SUPABASE_ANON_KEY  = process.env.ARETICA_SUPABASE_ANON_KEY;
+
 const execAsync = promisify(exec);
 
 console.error('[Main] loading windowMonitor');
