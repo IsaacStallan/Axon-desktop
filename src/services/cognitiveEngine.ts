@@ -6,6 +6,7 @@ import path from 'path';
 import { getCurrentApp, getSessionLog } from './windowMonitor';
 import { analyzeCurrentState }           from './patternEngine';
 import { getRecentContext }              from './screenAwareness';
+import { getLastChangeScore }           from './screenObserver';
 import { getTodayEvents }               from './calendarService';
 import { getActiveGoals }               from './goalService';
 import { getLearnedFacts, storeSessionContext } from './memoryService';
@@ -73,6 +74,7 @@ interface ObservationState {
   relevantFacts:                  string[];
   screenSummary:                  string;
   screenChanged:                  boolean;
+  screenChangeSignificance:       number;
   screenProductivitySignal:       'productive' | 'neutral' | 'distraction';
   readingDetected:                boolean;
   readingMinutes:                 number;
@@ -115,6 +117,27 @@ let lastScreenHash          = 0;
 let speaksThisHour  = 0;
 let speakHourBucket = -1;
 let lastSpeakDateStr = '';
+
+// Fix 1 — Global 8-minute speak cooldown
+let lastProactiveSpeakAt       = 0;
+const GLOBAL_SPEAK_COOLDOWN_MS = 8 * 60_000;
+
+// Fix 6 — Daily speak budget
+const dailySpeakBudget = { date: '', count: 0, maxPerDay: 25 };
+
+function canSpeak(tier?: number): boolean {
+  if (tier === 3) return true; // tier 3 always bypasses cooldown
+  return (Date.now() - lastProactiveSpeakAt) >= GLOBAL_SPEAK_COOLDOWN_MS;
+}
+
+function checkDailyBudget(): boolean {
+  const today = new Date().toDateString();
+  if (dailySpeakBudget.date !== today) {
+    dailySpeakBudget.date  = today;
+    dailySpeakBudget.count = 0;
+  }
+  return dailySpeakBudget.count < dailySpeakBudget.maxPerDay;
+}
 
 export function setLastConversationTime(): void {
   lastConversationEndedAt = Date.now();
@@ -246,10 +269,11 @@ async function collectObservations(): Promise<ObservationState> {
   const currentHash = simpleHash(screenSummary);
   const screenChanged = currentHash !== lastScreenHash;
   if (screenChanged) lastScreenHash = currentHash;
+  const screenChangeSignificance = screenChanged ? getLastChangeScore() : 0;
 
-  // Mac idle (sync)
+  // Mac idle (sync) — Fix 4: threshold raised from 8 to 15 minutes
   const macIdleMinutes      = getMacIdleMinutes();
-  const phoneUsageInferred  = macIdleMinutes > 8 &&
+  const phoneUsageInferred  = macIdleMinutes > 15 &&
     (timeOfDay === 'morning' || timeOfDay === 'afternoon');
 
   // Phone — run concurrently
@@ -296,6 +320,7 @@ async function collectObservations(): Promise<ObservationState> {
     relevantFacts,
     screenSummary,
     screenChanged,
+    screenChangeSignificance,
     screenProductivitySignal,
     readingDetected:                false,
     readingMinutes:                 0,
@@ -324,18 +349,22 @@ function speakDecision(
   model: CognitiveDecision['modelTier'],
   reason: string,
 ): CognitiveDecision {
+  console.log(`[CognitiveEngine] 🔊 SPEAK: ${reason} (tier ${tier})`);
   return { action: 'speak', priority, reason, interventionTier: tier, modelTier: model, shouldSpeak: true, confidence: 80 };
 }
 
 function watchDecision(reason: string, confidence: number): CognitiveDecision {
+  console.log(`[CognitiveEngine] 🔇 WATCH: ${reason} (confidence: ${confidence}%)`);
   return { action: 'watch', priority: 'low', reason, modelTier: 'groq', shouldSpeak: false, confidence };
 }
 
 function blockDecision(reason: string): CognitiveDecision {
+  console.log(`[CognitiveEngine] 🚫 BLOCK: ${reason}`);
   return { action: 'block', priority: 'critical', reason, modelTier: 'groq', shouldSpeak: true, confidence: 100 };
 }
 
 function actSilentlyDecision(task: string, model: CognitiveDecision['modelTier']): CognitiveDecision {
+  console.log(`[CognitiveEngine] 🤫 SILENT: ${task}`);
   return { action: 'act_silently', priority: 'low', reason: task, silentTask: task, modelTier: model, shouldSpeak: false, confidence: 70 };
 }
 
@@ -343,14 +372,14 @@ function actSilentlyDecision(task: string, model: CognitiveDecision['modelTier']
 
 function evaluateDecision(obs: ObservationState): CognitiveDecision {
 
-  // ── Gate 1: Hard blocks ────────────────────────────────────────────────────
+  // ── Gate 1: Hard blocks (never bypassed) ──────────────────────────────────
   if (obs.softLockActive)     return watchDecision('Soft lock active', 0);
   if (obs.axonSnoozed)        return watchDecision('Axon snoozed by user', 0);
   if (obs.isInMeeting)        return watchDecision('User is in a meeting — never interrupt', 0);
   if (isConversationActive()) return watchDecision('Conversation already active', 0);
   if (isSpeaking)             return watchDecision('Already speaking', 0);
 
-  // ── First-week cap: max 2 proactive speaks per hour ────────────────────────
+  // ── First-week hourly cap ──────────────────────────────────────────────────
   const firstWeek = isFirstWeek();
   if (firstWeek) {
     const nowHour = new Date().getHours();
@@ -360,18 +389,15 @@ function evaluateDecision(obs: ObservationState): CognitiveDecision {
     }
   }
 
-  // ── Gate 2: Critical priority ──────────────────────────────────────────────
+  // ── Gate 2: Critical — bypass global cooldown ──────────────────────────────
   if (obs.sessionFocusMinutes > 300 && obs.lastBreakMinutes > 120) {
-    // Downgrade to tier 2 during first week — too early to be confrontational
-    if (firstWeek) return speakDecision('high', 2, 'haiku', 'Over 5h focus — first week, using tier 2');
+    if (firstWeek) return speakDecision('high', 2, 'haiku', 'Over 5h focus — first week tier 2');
     return speakDecision('critical', 3, 'sonnet', 'Over 5h focus, no break in 2h — health risk');
   }
-
   if (obs.nextEventMinutes !== null && obs.nextEventMinutes <= 5 && obs.nextEventMinutes > 0) {
     return speakDecision('high', 1, 'haiku',
       `${obs.nextEventTitle} starts in ${obs.nextEventMinutes} minutes`);
   }
-
   if (obs.weeklyPlanToday?.softLockStart && !obs.softLockActive) {
     const [h, m]   = (obs.weeklyPlanToday.softLockStart).split(':').map(Number);
     const lockTime = new Date();
@@ -379,6 +405,23 @@ function evaluateDecision(obs: ObservationState): CognitiveDecision {
     if (!isNaN(h) && new Date() >= lockTime) {
       return blockDecision('Scheduled soft lock time reached');
     }
+  }
+
+  // ── Tier 3 drift — bypasses global cooldown ────────────────────────────────
+  if (obs.driftTier === 3) {
+    if (firstWeek) return speakDecision('high', 2, 'haiku', 'Tier 3 drift — downgraded to tier 2 (first week)');
+    return speakDecision('critical', 3, 'sonnet', 'Tier 3 drift — recovery needed');
+  }
+
+  // ── Fix 1: Global 8-minute speak cooldown ─────────────────────────────────
+  if (!canSpeak()) {
+    const minsSince = Math.round((Date.now() - lastProactiveSpeakAt) / 60_000);
+    return watchDecision(`Global cooldown — spoke ${minsSince}m ago (need 8m)`, 100);
+  }
+
+  // ── Fix 6: Daily speak budget ──────────────────────────────────────────────
+  if (!checkDailyBudget()) {
+    return watchDecision(`Daily budget reached (${dailySpeakBudget.count}/${dailySpeakBudget.maxPerDay})`, 100);
   }
 
   // ── Gate 3: Flow state protection ─────────────────────────────────────────
@@ -395,36 +438,29 @@ function evaluateDecision(obs: ObservationState): CognitiveDecision {
     return watchDecision('User in deep work flow — protecting it', 95);
   }
 
-  // ── Gate 4: Drift detection ────────────────────────────────────────────────
+  // ── Gate 4: Drift detection (tier 1 & 2 only — tier 3 handled above) ──────
   if (obs.consecutiveFailedInterventions >= 3) {
     return watchDecision('3 consecutive failed interventions — backing off', 20);
   }
-
   const minGapMins = obs.lastInterventionWorked ? 15 : 25;
   if (obs.lastInterventionMinutes < minGapMins) {
     return watchDecision(
       `Too soon since last intervention (${obs.lastInterventionMinutes}m < ${minGapMins}m)`, 10,
     );
   }
-
-  if (obs.driftTier === 3) {
-    if (firstWeek) return speakDecision('high', 2, 'haiku', 'Tier 3 drift — downgraded to tier 2 (first week)');
-    return speakDecision('critical', 3, 'sonnet', 'Tier 3 drift — recovery needed');
-  }
-  if (obs.driftTier === 2) return speakDecision('high',     2, 'haiku',  'Tier 2 drift — early intervention');
+  if (obs.driftTier === 2) return speakDecision('high',   2, 'haiku', 'Tier 2 drift — early intervention');
   if (obs.driftTier === 1 && obs.energyLevel !== 'low') {
     return speakDecision('medium', 1, 'haiku', 'Tier 1 drift — predictive nudge');
   }
 
   // ── Gate 5: Phone monitoring ───────────────────────────────────────────────
-  // Confirmed iOS Shortcut data takes priority over inference
-  if (obs.phoneConfirmedDistraction) {
+  // Fix 4: confirmed threshold — macIdle > 15 (was 12)
+  if (obs.phoneConfirmedDistraction && obs.macIdleMinutes > 15) {
     return speakDecision('high', 2, 'haiku',
       `Confirmed: ${obs.phoneDistractionApp} opened on iPhone ${obs.phoneDistractionMinutesAgo}min ago while Mac idle`);
   }
-
-  // Fall back to Mac idle inference when no iOS Shortcut data
-  if (obs.phoneUsageInferred && obs.macIdleMinutes > 12 &&
+  // Fix 4: inference threshold — macIdle > 20 (was 12), and phoneUsageInferred already requires > 15
+  if (obs.phoneUsageInferred && obs.macIdleMinutes > 20 &&
       (obs.timeOfDay === 'morning' || obs.timeOfDay === 'afternoon')) {
     return speakDecision('medium', 1, 'haiku',
       `Mac idle ${obs.macIdleMinutes}min during work hours — phone use likely`);
@@ -435,16 +471,22 @@ function evaluateDecision(obs: ObservationState): CognitiveDecision {
     return speakDecision('medium', 1, 'haiku', 'No break in 90+ minutes of focus');
   }
 
-  if (obs.readingDetected && obs.readingMinutes >= 10 && obs.lastSpokenToAxonMinutes > 20) {
+  // Fix 3: reading threshold 20 → 35 minutes
+  if (obs.readingDetected && obs.readingMinutes >= 10 && obs.lastSpokenToAxonMinutes > 35) {
     return speakDecision('low', 1, 'haiku', `Reading detected for ${obs.readingMinutes}min — comprehension check`);
   }
 
-  if (obs.screenChanged && obs.screenProductivitySignal === 'productive' &&
-      obs.lastSpokenToAxonMinutes > 30) {
-    return speakDecision('low', 1, 'haiku', 'Productive screen change — proactive comment opportunity');
+  // Fix 2 & Fix 3: screen change — significance > 60 threshold + 30 → 45 min silence
+  if (obs.screenChanged &&
+      obs.screenChangeSignificance > 60 &&
+      obs.screenProductivitySignal === 'productive' &&
+      obs.lastSpokenToAxonMinutes > 45) {
+    return speakDecision('low', 1, 'haiku',
+      `Significant productive screen change (score ${obs.screenChangeSignificance}) — proactive comment opportunity`);
   }
 
-  if (obs.timeOfDay === 'morning' && obs.openCommitments > 0 && obs.lastSpokenToAxonMinutes > 60) {
+  // Fix 3: open commitments morning check 60 → 90 minutes
+  if (obs.timeOfDay === 'morning' && obs.openCommitments > 0 && obs.lastSpokenToAxonMinutes > 90) {
     return speakDecision('low', 1, 'haiku', `${obs.openCommitments} open commitments — morning check-in`);
   }
 
@@ -452,9 +494,10 @@ function evaluateDecision(obs: ObservationState): CognitiveDecision {
     return actSilentlyDecision(`Prepare context for: ${obs.nextEventTitle}`, 'haiku');
   }
 
+  // Fix 3: weekly plan deviation 45 → 60 minutes
   if (obs.weeklyPlanToday && obs.todayPriority &&
       obs.screenProductivitySignal !== 'productive' &&
-      obs.timeOfDay === 'morning' && obs.lastSpokenToAxonMinutes > 45) {
+      obs.timeOfDay === 'morning' && obs.lastSpokenToAxonMinutes > 60) {
     return speakDecision('low', 1, 'haiku', 'Morning hours — not aligned with today priority');
   }
 
@@ -560,6 +603,11 @@ Rules:
 
     await speak(message);
     recordInterventionFired();
+
+    // Fix 1 & Fix 6: update cooldown timestamp and daily budget
+    lastProactiveSpeakAt = Date.now();
+    dailySpeakBudget.count++;
+    console.log(`[CognitiveEngine] daily speaks: ${dailySpeakBudget.count}/${dailySpeakBudget.maxPerDay}`);
 
     logIntervention({
       timestamp:     new Date().toISOString(),

@@ -40,6 +40,7 @@ let productiveContentHash   = 0;
 let productiveContentStart  = 0;
 let readingCheckFired       = false;
 let lastProductiveHash      = 0;   // detect significant content change
+let lastChangeScore         = 0;   // 0-100 significance of most recent screen change
 
 export function setOrbWindow(win: BrowserWindow): void {
   orbWin = win;
@@ -293,6 +294,13 @@ function onScreenChanged(ctx: ScreenContext): void {
   const prevMode = lastKnownMode;
   lastKnownMode  = classifyMode(ctx);
 
+  // Score significance of this change (0-100) for cognitiveEngine gate 6
+  lastChangeScore = Math.min(100,
+    (lastKnownMode !== prevMode        ? 45 : 0) +
+    (isUnexpectedContext(prevMode, ctx) ? 35 : 0) +
+    (ctx.productivitySignal !== 'idle'  ? 20 : 0),
+  );
+
   console.log(
     `[ScreenObserver] screen changed — mode: ${prevMode} → ${lastKnownMode}, ` +
     `app: ${ctx.activeApp}, signal: ${ctx.productivitySignal}`,
@@ -331,6 +339,11 @@ function onScreenChanged(ctx: ScreenContext): void {
     console.log(`[ScreenObserver] unexpected context (${prevMode} → ${lastKnownMode}) — evaluating proactive comment`);
     void evaluateProactiveComment(ctx);
   }
+}
+
+/** Returns the significance score (0-100) of the most recent screen change. */
+export function getLastChangeScore(): number {
+  return lastChangeScore;
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
