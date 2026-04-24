@@ -30,6 +30,7 @@ import { recordInterventionFired }      from './rateLimiter';
 import { runSilentTask }                from './subAgentOrchestrator';
 import { recordTokens }                 from './costTracker';
 import * as phoneMonitor                from './phoneMonitor';
+import { getRelevantInsights }         from './collectiveIntelligence';
 import { ARETICA_VISION }              from './areticaVision';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '', maxRetries: 3 });
@@ -553,6 +554,19 @@ async function executeSpeak(obs: ObservationState, decision: CognitiveDecision):
     ? `\nPHONE ACTIVITY: ${obs.phoneSummary}\nIf phone drift is the reason for this intervention, reference it specifically and directly.`
     : '';
 
+  const insights = getRelevantInsights({
+    appContext: obs.activeApp,
+    timeOfDay:  obs.timeOfDay,
+    tier:       decision.interventionTier ?? 1,
+  });
+  const insightsPart = insights.length > 0
+    ? `\n\nCOLLECTIVE INTELLIGENCE (anonymised patterns from all Axon users):\n` +
+      insights.map(i =>
+        `- ${i.condition}: ${i.recommendation} (${Math.round(i.confidence * 100)}% confidence, ${i.sampleSize} users)`,
+      ).join('\n') +
+      `\nReference these patterns where relevant. What works for similar users in similar situations.`
+    : '';
+
   const prompt = `${ARETICA_VISION}
 
 CURRENT OBSERVATION STATE:
@@ -585,7 +599,7 @@ Rules:
 - Do not ask questions unless tier 1
 - Silence is better than a bad intervention
 - No markdown, no quotes, just the spoken words
-- Respond with exactly "SKIP" if silence is better right now${firstSpeakToday ? '\n- This is your first proactive message of the day during Axon\'s learning week. Begin with: "Still learning your patterns — I\'ll get more accurate over time." Then continue with the intervention.' : ''}`;
+- Respond with exactly "SKIP" if silence is better right now${firstSpeakToday ? '\n- This is your first proactive message of the day during Axon\'s learning week. Begin with: "Still learning your patterns — I\'ll get more accurate over time." Then continue with the intervention.' : ''}${insightsPart}`;
 
   const message = await routeByTier(decision.modelTier, prompt);
   if (!message || message.trim().toUpperCase() === 'SKIP') return;

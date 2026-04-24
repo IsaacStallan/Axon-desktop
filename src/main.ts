@@ -57,6 +57,7 @@ const { getDailyTotal, getSessionTotal } = require('./services/costTracker');
 const { isGmailConnected } = require('./services/gmailService');
 const { getAllDeviceStatuses } = require('./services/deviceCoordinator');
 const { getClient: getSupabaseClient } = require('./services/cloudSync');
+const { pullCollectiveInsights, logCollectiveSetupSQL } = require('./services/collectiveIntelligence');
 console.error('[Main] all imports done');
 
 // ── Global error handlers ─────────────────────────────────────────────────────
@@ -624,6 +625,8 @@ function startFullAxon(): void {
 
     startWindowMonitor();
     void verifySupabaseTables();
+    void (pullCollectiveInsights as () => Promise<void>)();       // pull anonymised insights, log SQL if tables missing
+    (logCollectiveSetupSQL as () => void)();
     startDecisionLoop(beginConversation);   // setup: seeding, cloud sync, heartbeat, weekly review
     void (startCognitiveLoop as (fn: () => void) => Promise<void>)(beginConversation);
     startBriefingService(beginConversation);
