@@ -237,13 +237,60 @@
     .cap-name { font-size: 13px; color: var(--text); font-weight: 500; letter-spacing: 0.2px; }
     .cap-desc { font-size: 11px; color: rgba(232,237,242,0.4); margin-top: 6px; line-height: 1.55; }
 
+    /* ── Pain / narrative sections ── */
+    .pain-section { border-top: 1px solid var(--card-border); }
+    .pain-section .section-title { color: var(--text); }
+    .pain-list { list-style: none; max-width: 620px; margin: 0 auto 36px; }
+    .pain-list li {
+      font-size: 16px; color: rgba(232,237,242,0.72);
+      padding: 14px 0; border-bottom: 1px solid var(--card-border);
+      line-height: 1.55;
+    }
+    .pain-list li:last-child { border-bottom: none; }
+    .pain-list li .arrow { color: var(--primary); margin-right: 10px; }
+    .pain-close {
+      font-size: 14px; color: var(--primary); opacity: 0.8;
+      text-align: center; letter-spacing: 0.03em; margin-top: 24px;
+    }
+
     /* ── Pricing ── */
     #pricing { border-top: 1px solid var(--card-border); }
-    .pricing-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+    .pricing-subhead {
+      font-size: 16px; color: rgba(232,237,242,0.45);
+      margin-top: -40px; margin-bottom: 40px; letter-spacing: 0.01em;
+    }
+    .billing-toggle {
+      display: flex; align-items: center; gap: 14px;
+      justify-content: center; margin-bottom: 44px;
+    }
+    .toggle-opt {
+      font-size: 13px; color: rgba(232,237,242,0.4);
+      cursor: pointer; letter-spacing: 0.5px; transition: color 0.2s;
+    }
+    .toggle-opt.active { color: var(--text); }
+    .save-badge {
+      font-size: 10px; background: rgba(0,212,255,0.14);
+      color: var(--primary); padding: 2px 8px; border-radius: 4px;
+      letter-spacing: 1px; margin-left: 6px;
+    }
+    .toggle-track {
+      width: 40px; height: 22px; border-radius: 11px;
+      background: var(--card-border); cursor: pointer; position: relative;
+      border: 1px solid rgba(0,212,255,0.2); transition: background 0.25s;
+    }
+    .toggle-track.yearly { background: rgba(0,212,255,0.18); }
+    .toggle-thumb {
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--muted); position: absolute;
+      top: 2px; left: 2px; transition: left 0.25s, background 0.25s;
+    }
+    .toggle-track.yearly .toggle-thumb { left: 20px; background: var(--primary); }
+    .pricing-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
     .price-card {
       background: var(--card-bg); border: 1px solid var(--card-border);
-      border-radius: var(--radius); padding: 48px 40px;
+      border-radius: var(--radius); padding: 40px 32px;
       position: relative; transition: transform 0.3s, box-shadow 0.3s;
+      display: flex; flex-direction: column;
     }
     .price-card:hover { transform: translateY(-5px); box-shadow: var(--glow); }
     .price-card.featured {
@@ -258,29 +305,42 @@
     .price-tag {
       font-size: 9px; letter-spacing: 3px; color: #000; font-weight: 700;
       background: var(--primary); padding: 5px 14px;
-      position: absolute; top: -1px; right: 32px;
+      position: absolute; top: -1px; right: 28px;
       border-radius: 0 0 6px 6px;
-      box-shadow: 0 0 20px rgba(0,212,255,0.5);
-      display: none;
     }
-    .price-card.featured .price-tag { display: block; }
-    .price-tier { font-family: Georgia, serif; font-size: 20px; color: var(--text); margin-bottom: 12px; }
+    .price-tag.dimmed { background: var(--muted); color: var(--text); letter-spacing: 2px; }
+    .price-tier { font-family: Georgia, serif; font-size: 20px; color: var(--text); margin-bottom: 10px; }
+    .price-desc { font-size: 12px; color: rgba(232,237,242,0.38); line-height: 1.6; margin-bottom: 20px; }
     .price-amount {
-      font-size: 52px; color: var(--primary);
-      font-weight: 200; margin-bottom: 6px; letter-spacing: -1px;
+      font-size: 48px; color: var(--primary);
+      font-weight: 200; margin-bottom: 4px; letter-spacing: -1px;
     }
-    .price-amount span { font-size: 18px; opacity: 0.5; }
-    .price-sub { font-size: 12px; color: rgba(232,237,242,0.38); margin-bottom: 36px; }
-    .price-features { list-style: none; }
+    .price-amount span { font-size: 16px; opacity: 0.5; }
+    .price-sub { font-size: 11px; color: rgba(232,237,242,0.32); margin-bottom: 28px; }
+    .price-cta {
+      display: block; width: 100%; padding: 12px;
+      background: transparent; border: 1px solid rgba(0,212,255,0.35);
+      color: var(--primary); font-size: 11px; letter-spacing: 2px;
+      cursor: pointer; border-radius: 5px; margin-bottom: 16px;
+      transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+      text-align: center;
+    }
+    .price-cta:hover { background: rgba(0,212,255,0.08); border-color: var(--primary); box-shadow: var(--glow); }
+    .price-card.featured .price-cta {
+      background: var(--primary); color: #000; border-color: var(--primary); font-weight: 700;
+    }
+    .price-card.featured .price-cta:hover { opacity: 0.88; box-shadow: 0 0 32px rgba(0,212,255,0.5); }
+    .price-note { font-size: 10px; color: rgba(232,237,242,0.25); text-align: center; margin-bottom: 24px; letter-spacing: 0.3px; }
+    .price-features { list-style: none; margin-top: auto; }
     .price-features li {
-      font-size: 13px; color: rgba(232,237,242,0.6);
-      padding: 9px 0; border-bottom: 1px solid var(--card-border);
-      display: flex; align-items: center; gap: 12px;
+      font-size: 12px; color: rgba(232,237,242,0.55);
+      padding: 8px 0; border-bottom: 1px solid var(--card-border);
+      display: flex; align-items: flex-start; gap: 10px; line-height: 1.5;
     }
     .price-features li:last-child { border-bottom: none; }
     .price-features li::before {
-      content: ''; width: 5px; height: 5px; flex-shrink: 0;
-      background: var(--primary); border-radius: 50%; opacity: 0.65;
+      content: ''; width: 5px; height: 5px; flex-shrink: 0; margin-top: 6px;
+      background: var(--primary); border-radius: 50%; opacity: 0.6;
     }
 
     /* ── Download ── */
@@ -340,6 +400,9 @@
     .footer-copy { font-size: 12px; color: rgba(232,237,242,0.18); }
 
     /* ── Responsive ── */
+    @media (max-width: 1100px) {
+      .pricing-grid { grid-template-columns: repeat(2,1fr); }
+    }
     @media (max-width: 900px) {
       .hero-inner { grid-template-columns: 1fr; gap: 48px; text-align: center; }
       .hero-left { justify-content: center; }
@@ -374,7 +437,10 @@
   <!-- Nav -->
   <nav>
     <div class="wordmark">ARETICA</div>
-    <a href="#download"><button class="nav-cta">Download</button></a>
+    <div style="display:flex;align-items:center;gap:28px;">
+      <a href="privacy.html" style="font-size:12px;color:rgba(232,237,242,0.3);letter-spacing:0.5px;transition:color 0.2s;" onmouseover="this.style.color='#00D4FF'" onmouseout="this.style.color='rgba(232,237,242,0.3)'">Privacy</a>
+      <a href="#download"><button class="nav-cta">Download</button></a>
+    </div>
   </nav>
 
   <!-- Hero -->
@@ -384,15 +450,14 @@
         <canvas id="hero-canvas" width="400" height="400"></canvas>
       </div>
       <div class="hero-right">
-        <div class="hero-eyebrow reveal">Axon Desktop · macOS</div>
-        <h1 class="reveal d1">The AI that makes you more of yourself</h1>
-        <p class="hero-sub reveal d2">Axon watches. Intervenes. Executes. So you can focus on what actually matters.</p>
+        <div class="hero-eyebrow reveal">Axon · macOS</div>
+        <h1 class="reveal d1">You know what you should be doing right now.<br>So why aren't you doing it?</h1>
+        <p class="hero-sub reveal d2">Axon watches how you actually work — not how you think you work. It sees the patterns you can't. And it stops you before you lose the afternoon.</p>
         <div class="hero-btns reveal d3">
-          <a href="#download"><button class="btn-cta">Download for Mac</button></a>
+          <a href="#download"><button class="btn-cta">Download for Mac — Free</button></a>
           <a href="#how"><button class="btn-outline">See how it works</button></a>
         </div>
-        <a href="waitlist.html" class="waitlist-link reveal d3">Join the waitlist &rarr;</a>
-        <p class="hero-fine reveal d3">macOS 12+ &nbsp;·&nbsp; Free to start &nbsp;·&nbsp; No account required</p>
+        <p class="hero-fine reveal d3">No willpower required. No configuration. Axon figures you out.</p>
       </div>
     </div>
     <div class="scroll-indicator">
@@ -403,31 +468,69 @@
     </div>
   </section>
 
-  <!-- How it works -->
-  <section id="how">
+  <!-- You already know the problem -->
+  <section id="how" class="pain-section">
     <div class="section-wrap">
-      <div class="section-label reveal">How it works</div>
-      <div class="section-title reveal d1">Three things. Relentlessly.</div>
+      <div class="section-label reveal">The problem</div>
+      <div class="section-title reveal d1">You already know the problem.</div>
       <div class="how-container">
         <div class="how-connector"><div class="how-connector-line"></div></div>
         <div class="how-grid">
           <div class="how-card reveal">
-            <div class="how-num">01</div>
-            <div class="how-title">Watches</div>
-            <p class="how-body">Axon monitors your screen and behaviour in real time. It knows what you're doing before you do. Not a tracker — a witness that remembers.</p>
+            <div class="how-title">You open your laptop to work.</div>
+            <p class="how-body">Ten minutes later you're on YouTube. You didn't decide to go there. It just happened. Again.</p>
           </div>
           <div class="how-card reveal d1">
-            <div class="how-num">02</div>
-            <div class="how-title">Intervenes</div>
-            <p class="how-body">When you drift, Axon pulls you back. Not with notifications — with a voice that knows you. Built around your goals, your language, your war statement.</p>
+            <div class="how-title">You make a plan every morning.</div>
+            <p class="how-body">By 2pm it's gone. The plan didn't account for how your brain actually behaves when things get hard.</p>
           </div>
           <div class="how-card reveal d2">
-            <div class="how-num">03</div>
-            <div class="how-title">Executes</div>
-            <p class="how-body">Ask Axon to do anything. Research, write, code, control your Mac, send emails, book meetings. It acts, not just answers.</p>
+            <div class="how-title">You've tried everything.</div>
+            <p class="how-body">Notion. Todoist. Pomodoro. Phone in another room. They all work for three days. Then you're back where you started.</p>
           </div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- What Axon does differently -->
+  <section class="pain-section">
+    <div class="section-wrap">
+      <div class="section-label reveal">The difference</div>
+      <div class="section-title reveal d1">Axon doesn't ask you to be more disciplined.<br><span style="color:rgba(232,237,242,0.55);font-size:0.72em;letter-spacing:0;">It assumes you won't be — and catches you anyway.</span></div>
+      <div class="how-container">
+        <div class="how-connector"><div class="how-connector-line"></div></div>
+        <div class="how-grid">
+          <div class="how-card reveal">
+            <div class="how-title">It watches without being asked.</div>
+            <p class="how-body">Axon runs in the background on your Mac. It learns which apps you drift to, at what times, after what triggers. It builds a model of your specific patterns — not generic advice.</p>
+          </div>
+          <div class="how-card reveal d1">
+            <div class="how-title">It speaks at the right moment.</div>
+            <p class="how-body">Not notifications. Not reminders. Axon speaks to you — out loud — at the exact moment you're about to lose the next two hours. Before you've even noticed it happening.</p>
+          </div>
+          <div class="how-card reveal d2">
+            <div class="how-title">It gets more accurate over time.</div>
+            <p class="how-body">Week one it's learning. Week four it knows you. Month three it's saying things about your behaviour that make you stop and stare at the ceiling because it's right.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- This is you, isn't it -->
+  <section class="pain-section">
+    <div class="section-wrap" style="text-align:center;">
+      <div class="section-label reveal">Who this is for</div>
+      <div class="section-title reveal d1">This is you, isn't it.</div>
+      <ul class="pain-list reveal d2">
+        <li><span class="arrow">→</span>You open a tab to do one thing and wake up 45 minutes later having done nothing.</li>
+        <li><span class="arrow">→</span>You have goals you genuinely care about and you're still not hitting them.</li>
+        <li><span class="arrow">→</span>You've been "about to start" the same project for three weeks.</li>
+        <li><span class="arrow">→</span>You work hard in short bursts and spend the rest of the time feeling guilty about not working.</li>
+        <li><span class="arrow">→</span>You already know what the problem is. You just can't seem to stop it.</li>
+      </ul>
+      <p class="pain-close reveal d3">Axon is built for this exact person.</p>
     </div>
   </section>
 
@@ -435,7 +538,7 @@
   <section id="capabilities">
     <div class="section-wrap">
       <div class="section-label reveal">Capabilities</div>
-      <div class="section-title reveal d1">Everything you need. Nothing you don't.</div>
+      <div class="section-title reveal d1">What Axon actually does</div>
       <div class="cap-grid">
         <div class="cap-item reveal">
           <svg class="cap-icon" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.4">
@@ -516,47 +619,99 @@
   <section id="pricing">
     <div class="section-wrap">
       <div class="section-label reveal">Pricing</div>
-      <div class="section-title reveal d1">Start free. Scale when you're ready.</div>
+      <div class="section-title reveal d1">Simple pricing. Serious results.</div>
+      <p class="pricing-subhead reveal d2">Start free. Upgrade when Axon proves itself.</p>
+      <div class="billing-toggle reveal d2">
+        <span class="toggle-opt active" id="opt-monthly">Monthly</span>
+        <div class="toggle-track" id="toggle-track">
+          <div class="toggle-thumb" id="toggle-thumb"></div>
+        </div>
+        <span class="toggle-opt" id="opt-yearly">Yearly <span class="save-badge">Save ~20%</span></span>
+      </div>
       <div class="pricing-grid">
+
+        <!-- Free -->
         <div class="price-card float-in">
+          <div class="price-tag dimmed">START HERE</div>
           <div class="price-tier">Free</div>
+          <div class="price-desc">Axon starts learning your patterns. See what it notices about you.</div>
           <div class="price-amount">$0</div>
           <div class="price-sub">Forever free</div>
+          <a href="#download"><button class="price-cta">Download Free</button></a>
+          <p class="price-note">No credit card required</p>
           <ul class="price-features">
-            <li>10 min/day conversation</li>
-            <li>Basic drift monitoring</li>
+            <li>3 interventions per day</li>
+            <li>Basic behaviour monitoring</li>
             <li>1 device</li>
-            <li>Voice wake-word</li>
-            <li>Goal tracking</li>
+            <li>Text only (no voice)</li>
+            <li>30-day learning period</li>
           </ul>
         </div>
-        <div class="price-card featured float-in d1">
+
+        <!-- Core -->
+        <div class="price-card float-in d1">
+          <div class="price-tier">Core</div>
+          <div class="price-desc">Full Axon. Voice enabled. The version that actually changes how you work.</div>
+          <div class="price-amount">$<span class="price-num" data-monthly="19" data-yearly="15">19</span><span>/mo</span></div>
+          <div class="price-sub">
+            <span class="bill-monthly">Billed monthly</span>
+            <span class="bill-yearly" style="display:none">Billed yearly — save ~20%</span>
+          </div>
+          <button class="price-cta">Start 7-day free trial</button>
+          <p class="price-note">&nbsp;</p>
+          <ul class="price-features">
+            <li>Unlimited interventions</li>
+            <li>Full voice — Axon speaks to you</li>
+            <li>Calendar + email integration</li>
+            <li>1 device</li>
+            <li>Behaviour learning never stops</li>
+          </ul>
+        </div>
+
+        <!-- Pro (featured) -->
+        <div class="price-card featured float-in d2">
           <div class="price-tag">MOST POPULAR</div>
           <div class="price-tier">Pro</div>
-          <div class="price-amount">$<span id="pro-price">29</span><span>/mo</span></div>
-          <div class="price-sub">Billed monthly</div>
+          <div class="price-desc">For people serious about closing the gap between who they are and who they're capable of being.</div>
+          <div class="price-amount">$<span class="price-num" data-monthly="49" data-yearly="39">49</span><span>/mo</span></div>
+          <div class="price-sub">
+            <span class="bill-monthly">Billed monthly</span>
+            <span class="bill-yearly" style="display:none">Billed yearly — save ~20%</span>
+          </div>
+          <button class="price-cta">Start 7-day free trial</button>
+          <p class="price-note">&nbsp;</p>
           <ul class="price-features">
-            <li>Unlimited conversation</li>
-            <li>Full proactivity engine</li>
+            <li>Everything in Core</li>
+            <li>Multi-device (Mac + PC monitoring)</li>
             <li>Screen awareness</li>
-            <li>Sub-agents</li>
-            <li>2 devices</li>
-            <li>Weekly AI review</li>
+            <li>Phone drift detection</li>
+            <li>Sub-agents run tasks for you</li>
+            <li>Weekly life planning</li>
+            <li>Soft lock (lockout for gym/runs)</li>
+            <li>Obsidian sync</li>
+            <li>Priority model routing</li>
           </ul>
         </div>
-        <div class="price-card float-in d2">
-          <div class="price-tier">Enterprise</div>
-          <div class="price-amount" style="font-size:28px;padding-top:8px">Contact us</div>
-          <div class="price-sub">Custom pricing</div>
+
+        <!-- Team -->
+        <div class="price-card float-in d3">
+          <div class="price-tag dimmed">FOR TEAMS</div>
+          <div class="price-tier">Team</div>
+          <div class="price-desc">Axon for your whole team. Everyone performs. No one drifts.</div>
+          <div class="price-amount" style="font-size:28px;padding-top:10px;">$149<span style="font-size:14px;">/mo</span></div>
+          <div class="price-sub">5 seats included</div>
+          <button class="price-cta">Contact us</button>
+          <p class="price-note">&nbsp;</p>
           <ul class="price-features">
-            <li>Unlimited everything</li>
-            <li>Custom deployment</li>
-            <li>Team features</li>
-            <li>Up to 10 devices</li>
+            <li>Everything in Pro</li>
+            <li>5 seats ($25/additional seat)</li>
+            <li>Manager dashboard (coming soon)</li>
+            <li>Custom deployment options</li>
             <li>Priority support</li>
-            <li>Custom integrations</li>
+            <li>Annual contracts available</li>
           </ul>
         </div>
+
       </div>
     </div>
   </section>
@@ -565,29 +720,12 @@
   <section id="download">
     <div class="section-wrap">
       <div class="section-label reveal">Download</div>
-      <div class="section-title reveal d1">Get Axon</div>
-      <a href="#"><button class="download-btn reveal d2">Download for Mac (.dmg)</button></a>
-      <div class="download-steps reveal d3">
-        <div class="step">
-          <span class="step-number">1</span>
-          <span>Download Axon</span>
-        </div>
-        <div class="step">
-          <span class="step-number">2</span>
-          <span>Open the .dmg and drag to Applications</span>
-        </div>
-        <div class="step">
-          <span class="step-number">3</span>
-          <span>Open Axon. Allow microphone when asked.</span>
-        </div>
-        <div class="step">
-          <span class="step-number">4</span>
-          <span>That's it.</span>
-        </div>
-      </div>
-      <p class="download-note reveal d4">No account required. No configuration. Axon starts learning you immediately.</p>
-      <p class="download-meta reveal d5">macOS 12 Monterey or later &nbsp;·&nbsp; Apple Silicon + Intel</p>
-      <p class="built-by reveal d5">Built by Aretica</p>
+      <div class="section-title reveal d1">Stop losing afternoons.</div>
+      <p class="hero-sub reveal d2" style="text-align:center;margin:0 auto 32px;">Axon gets more accurate every day it watches you.<br>The earlier you start, the better it knows you.</p>
+      <a href="#"><button class="download-btn reveal d2">Download for Mac — Free</button></a>
+      <p class="download-note reveal d3">7-day free trial. No credit card. Cancel anytime.</p>
+      <p class="download-meta reveal d4">macOS 12 or later &nbsp;·&nbsp; Apple Silicon + Intel</p>
+      <p class="built-by reveal d4">Built by Aretica</p>
     </div>
   </section>
 
@@ -599,7 +737,7 @@
     </div>
     <div class="footer-right">
       <div class="footer-links">
-        <a href="#">Privacy</a>
+        <a href="privacy.html">Privacy</a>
         <a href="#">Terms</a>
       </div>
       <div class="footer-copy">© 2026 Aretica. All rights reserved.</div>
@@ -772,21 +910,31 @@
       },{threshold:0.4}).observe(connector);
     }
 
-    // Count-up for Pro price
-    const priceEl = document.getElementById('pro-price');
-    if(priceEl){
-      let triggered=false;
-      new IntersectionObserver(entries=>{
-        entries.forEach(e=>{
-          if(e.isIntersecting && !triggered){
-            triggered=true;
-            let n=0;
-            const step=()=>{ priceEl.textContent=String(Math.min(n+=2,29)); if(n<29)setTimeout(step,35); };
-            setTimeout(step,300);
-          }
-        });
-      },{threshold:0.3}).observe(document.getElementById('pricing'));
+  })();
+
+  // ── Pricing billing toggle ────────────────────────────────────────────────────
+  (function(){
+    const track     = document.getElementById('toggle-track');
+    const optMon    = document.getElementById('opt-monthly');
+    const optYr     = document.getElementById('opt-yearly');
+    let   yearly    = false;
+
+    function setYearly(on){
+      yearly = on;
+      track.classList.toggle('yearly', on);
+      optMon.classList.toggle('active', !on);
+      optYr.classList.toggle('active', on);
+
+      document.querySelectorAll('.price-num').forEach(el=>{
+        el.textContent = on ? el.dataset.yearly : el.dataset.monthly;
+      });
+      document.querySelectorAll('.bill-monthly').forEach(el=>{ el.style.display = on ? 'none' : ''; });
+      document.querySelectorAll('.bill-yearly').forEach(el=>{  el.style.display = on ? '' : 'none'; });
     }
+
+    track.addEventListener('click', ()=> setYearly(!yearly));
+    optMon.addEventListener('click', ()=> setYearly(false));
+    optYr.addEventListener('click',  ()=> setYearly(true));
   })();
   </script>
 

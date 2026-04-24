@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy — Axon by Aretica</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg:          #050810;
+      --primary:     #00D4FF;
+      --text:        #e8edf2;
+      --muted:       #3a4a5a;
+      --card-bg:     #0a1018;
+      --card-border: #0d2030;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      font-size: 16px;
+      line-height: 1.75;
+      overflow-x: hidden;
+    }
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { opacity: 0.8; }
+
+    /* Scanlines */
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+      background: repeating-linear-gradient(
+        to bottom, transparent 0px, transparent 3px,
+        rgba(0,212,255,0.004) 3px, rgba(0,212,255,0.004) 4px
+      );
+    }
+
+    nav, main, footer { position: relative; z-index: 2; }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(5,8,16,0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(0,212,255,0.1);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 56px; height: 64px;
+    }
+    .wordmark {
+      font-family: Georgia, serif; font-size: 16px;
+      letter-spacing: 8px; color: var(--primary);
+    }
+    .nav-back {
+      font-size: 12px; color: rgba(232,237,242,0.4);
+      letter-spacing: 1px; transition: color 0.2s;
+    }
+    .nav-back:hover { color: var(--primary); }
+
+    /* ── Main ── */
+    main {
+      max-width: 720px; margin: 0 auto;
+      padding: 96px 48px 120px;
+    }
+
+    /* ── Header ── */
+    .page-eyebrow {
+      font-size: 10px; letter-spacing: 5px; color: var(--primary);
+      opacity: 0.6; margin-bottom: 20px; text-transform: uppercase;
+    }
+    .page-title {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 48px; font-weight: normal;
+      color: var(--text); line-height: 1.1;
+      letter-spacing: -0.5px; margin-bottom: 16px;
+    }
+    .page-sub {
+      font-size: 16px; color: rgba(232,237,242,0.45);
+      margin-bottom: 72px; line-height: 1.6;
+    }
+
+    /* ── Sections ── */
+    .priv-section { margin-bottom: 60px; }
+    .priv-section h2 {
+      font-family: Georgia, serif; font-size: 22px;
+      color: var(--primary); font-weight: normal;
+      margin-bottom: 24px; letter-spacing: 0.01em;
+    }
+    .priv-list { list-style: none; }
+    .priv-list li {
+      padding: 12px 0; border-bottom: 1px solid var(--card-border);
+      display: flex; align-items: flex-start; gap: 14px;
+      font-size: 15px; color: rgba(232,237,242,0.72); line-height: 1.6;
+    }
+    .priv-list li:last-child { border-bottom: none; }
+    .priv-list li .tick { color: var(--primary); flex-shrink: 0; font-size: 16px; }
+    .priv-list li .cross { color: #ff5a5a; flex-shrink: 0; font-size: 16px; }
+    .priv-body {
+      font-size: 15px; color: rgba(232,237,242,0.6); line-height: 1.8;
+    }
+    .priv-body p + p { margin-top: 16px; }
+
+    /* ── Short version ── */
+    .short-version {
+      border: 1px solid rgba(0,212,255,0.18);
+      border-radius: 12px; padding: 48px;
+      text-align: center; margin-top: 72px;
+      background: rgba(0,212,255,0.02);
+    }
+    .short-version p {
+      font-family: Georgia, serif;
+      font-size: 22px; color: var(--text);
+      line-height: 1.6; font-weight: normal;
+    }
+    .short-version p + p { margin-top: 14px; }
+    .short-version .final {
+      font-size: 14px; color: var(--primary);
+      margin-top: 24px; letter-spacing: 0.03em;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--card-border);
+      padding: 40px 56px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 16px;
+    }
+    .footer-wordmark {
+      font-family: Georgia, serif; font-size: 13px;
+      letter-spacing: 6px; color: var(--primary); opacity: 0.4;
+    }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a { font-size: 12px; color: rgba(232,237,242,0.3); transition: color 0.2s; }
+    .footer-links a:hover { color: var(--primary); }
+    .footer-copy { font-size: 12px; color: rgba(232,237,242,0.18); }
+
+    @media (max-width: 768px) {
+      nav { padding: 0 24px; }
+      main { padding: 72px 24px 96px; }
+      .page-title { font-size: 36px; }
+      footer { padding: 32px 24px; flex-direction: column; align-items: center; text-align: center; }
+      .short-version { padding: 32px 24px; }
+      .short-version p { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <a href="index.html"><div class="wordmark">ARETICA</div></a>
+    <a href="index.html" class="nav-back">← Back to Axon</a>
+  </nav>
+
+  <!-- Main -->
+  <main>
+    <div class="page-eyebrow">Privacy</div>
+    <h1 class="page-title">What Axon sees.<br>What it doesn't.</h1>
+    <p class="page-sub">No surprises. No fine print. Here's exactly what's happening.</p>
+
+    <!-- What Axon sees -->
+    <div class="priv-section">
+      <h2>What Axon sees on your Mac</h2>
+      <ul class="priv-list">
+        <li><span class="tick">✓</span><span>Which apps you have open and for how long</span></li>
+        <li><span class="tick">✓</span><span>When you switch between apps</span></li>
+        <li><span class="tick">✓</span><span>How long your Mac has been active or idle</span></li>
+        <li><span class="tick">✓</span><span>Your calendar events — names and times only, not the content of the events</span></li>
+        <li><span class="tick">✓</span><span>A screenshot of your screen every 30 seconds when active. This is processed locally on your Mac by an AI vision model — the result (e.g. "user is writing code") is stored. The image itself is never stored or transmitted anywhere.</span></li>
+      </ul>
+    </div>
+
+    <!-- What Axon never sees -->
+    <div class="priv-section">
+      <h2>What Axon never sees</h2>
+      <ul class="priv-list">
+        <li><span class="cross">✗</span><span>The content of your documents, emails, or messages</span></li>
+        <li><span class="cross">✗</span><span>Your passwords or anything you type</span></li>
+        <li><span class="cross">✗</span><span>Your browser history or what websites you visit</span></li>
+        <li><span class="cross">✗</span><span>Your files or file contents</span></li>
+        <li><span class="cross">✗</span><span>Anything on other people's screens or devices</span></li>
+      </ul>
+    </div>
+
+    <!-- Where your data goes -->
+    <div class="priv-section">
+      <h2>Where your data goes</h2>
+      <div class="priv-body">
+        <p>Your behavioural patterns — app usage, focus time, drift scores — are stored in a secure database to power Axon's learning over time. This is what allows Axon to get more accurate the longer you use it.</p>
+        <p>Screenshots are processed locally on your Mac by an AI vision model. The result (e.g. "user is writing code in VS Code") is stored. The image itself is not stored, uploaded, or sent anywhere.</p>
+        <p>Your data is never sold. Never shared with third parties. Never used to train AI models. It exists solely to make Axon more accurate for you.</p>
+      </div>
+    </div>
+
+    <!-- You're in control -->
+    <div class="priv-section">
+      <h2>You're in control</h2>
+      <div class="priv-body">
+        <p>You can delete all your data at any time by saying <em style="color:var(--primary)">"Hey Axon, delete my data"</em> or by removing the app. When you remove Axon, all local data is deleted automatically.</p>
+        <p>You can pause monitoring at any time from the menu bar icon. When paused, Axon stops all observation and goes silent.</p>
+      </div>
+    </div>
+
+    <!-- The short version -->
+    <div class="short-version">
+      <p>Axon watches what apps you use and when.</p>
+      <p>It never reads what's inside them.</p>
+      <p>Your data stays yours.</p>
+      <p class="final">Questions? <a href="mailto:hello@aretica.ai">hello@aretica.ai</a></p>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-wordmark">ARETICA</div>
+    <div class="footer-links">
+      <a href="privacy.html">Privacy</a>
+      <a href="#">Terms</a>
+    </div>
+    <div class="footer-copy">© 2026 Aretica. All rights reserved.</div>
+  </footer>
+
+</body>
+</html>
