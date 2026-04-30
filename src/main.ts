@@ -678,17 +678,29 @@ function startFullAxon(): void {
       }, 3000);
     });
 
-    // AirPods connect detection — greet Isaac when he puts them on
-    let lastOutputDevice = (getPreferredOutputDevice as () => string)();
-    setInterval(() => {
-      const current = (getPreferredOutputDevice as () => string)();
-      if (current === 'airpods' && lastOutputDevice !== 'airpods') {
-        setTimeout(() => {
-          void (elevenLabsSpeak as (text: string) => Promise<void>)("You're up.");
-        }, 2000);
+    const AXON_CORE_MODE = process.env.AXON_CORE_MODE === 'true';
+
+    if (AXON_CORE_MODE) {
+      console.log('[Main] Axon Core mode enabled — personal instance features active');
+
+      // AirPods connect detection — greet Isaac when he puts them on
+      let lastOutputDevice = (getPreferredOutputDevice as () => string)();
+      setInterval(() => {
+        const current = (getPreferredOutputDevice as () => string)();
+        if (current === 'airpods' && lastOutputDevice !== 'airpods') {
+          setTimeout(() => {
+            void (elevenLabsSpeak as (text: string) => Promise<void>)("You're up.");
+          }, 2000);
+        }
+        lastOutputDevice = current;
+      }, 30_000);
+
+      if (process.env.HOME_ASSISTANT_URL) {
+        console.log('[Main] Home Assistant configured — speaker broadcast enabled');
       }
-      lastOutputDevice = current;
-    }, 30_000);
+    } else {
+      console.log('[Main] Standard mode — personal features disabled');
+    }
 
     console.log('[Main] Axon desktop started');
   } catch (err) {

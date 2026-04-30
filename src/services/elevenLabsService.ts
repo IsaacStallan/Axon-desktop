@@ -213,7 +213,7 @@ async function speakChunk(text: string): Promise<void> {
   writeFileSync(TMP_FILE, wav);
 
   // Fire-and-forget HA broadcast so local playback is not blocked
-  if (process.env.HOME_ASSISTANT_URL) {
+  if (process.env.AXON_CORE_MODE === 'true' && process.env.HOME_ASSISTANT_URL) {
     const speakers = homeAssistant.getConfiguredSpeakers();
     if (speakers.length > 0) {
       const roomName = isAirPodsConnected() ? 'living_room' : 'office';
@@ -224,7 +224,7 @@ async function speakChunk(text: string): Promise<void> {
   }
 
   await new Promise<void>((resolve) => {
-    const airpods = isAirPodsConnected();
+    const airpods = process.env.AXON_CORE_MODE === 'true' && isAirPodsConnected();
     const volume  = airpods ? '0.85' : '1.0';
     const [playerPath, playerArgs]: [string, string[]] =
       process.platform === 'darwin'
