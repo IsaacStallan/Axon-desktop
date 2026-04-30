@@ -33,7 +33,8 @@ import {
   logIntervention,
   getSystemScreenTimeToday,
 } from './behaviourModel';
-import { speak, isSpeaking }            from './elevenLabsService';
+import { speak, isSpeaking, isAirPodsConnected, getPreferredOutputDevice } from './elevenLabsService';
+import { readPCState, isPCActive, getPCDriftContext, PCNodeState } from './pcNodeSync';
 import { isConversationActive }         from './conversationService';
 import { acquireSpeakerLock, releaseSpeakerLock } from './deviceCoordinator';
 import { setLastProactiveMessage }      from './proactiveContext';
@@ -110,6 +111,11 @@ interface ObservationState {
   lastSpokenToAxonMinutes:        number;
   axonSnoozed:                    boolean;
   softLockActive:                 boolean;
+  airpodsConnected:               boolean;
+  outputDevice:                   'airpods' | 'mac_speakers' | 'external';
+  pcState:                        PCNodeState | null;
+  pcActive:                       boolean;
+  pcDriftContext:                 string;
 }
 
 interface CognitiveDecision {
@@ -291,11 +297,14 @@ async function collectObservations(): Promise<ObservationState> {
   const phoneUsageInferred  = macIdleMinutes > 15 &&
     (timeOfDay === 'morning' || timeOfDay === 'afternoon');
 
-  // Phone — run concurrently
-  const [phoneCheck, phoneSummary] = await Promise.all([
+  // Phone + PC state + AirPods — run concurrently
+  const [phoneCheck, phoneSummary, pcState] = await Promise.all([
     phoneMonitor.isOnPhoneDistraction(),
     phoneMonitor.getPhoneSessionSummary(),
+    readPCState(),
   ]);
+  const airpodsConnected = isAirPodsConnected();
+  const outputDevice     = getPreferredOutputDevice();
 
   // Energy / capacity
   const energyLevel: ObservationState['energyLevel'] =
@@ -359,6 +368,11 @@ async function collectObservations(): Promise<ObservationState> {
     lastSpokenToAxonMinutes,
     axonSnoozed:                    isSnoozed(),
     softLockActive:                 getSoftLockState()?.active ?? false,
+    airpodsConnected,
+    outputDevice,
+    pcState,
+    pcActive:                       isPCActive(pcState),
+    pcDriftContext:                 getPCDriftContext(pcState),
   };
 }
 
@@ -474,6 +488,18 @@ function evaluateDecision(obs: ObservationState): CognitiveDecision {
     return speakDecision('medium', 1, 'haiku', 'Tier 1 drift — predictive nudge');
   }
 
+  // ── Gate 4b: PC cross-device awareness ────────────────────────────────────
+  if (obs.pcActive && obs.pcState) {
+    if (obs.macIdleMinutes > 5 && obs.pcState.drift_score > 65) {
+      return speakDecision('medium', 2, 'haiku',
+        `PC showing drift on ${obs.pcState.active_app} while Mac idle`);
+    }
+    if (obs.driftScore > 60 && obs.pcState.drift_score > 60) {
+      return speakDecision('high', 3, 'sonnet',
+        `Both Mac and PC showing drift — Mac: ${obs.activeApp}, PC: ${obs.pcState.active_app}`);
+    }
+  }
+
   // ── Gate 5: Phone monitoring ───────────────────────────────────────────────
   // Fix 4: confirmed threshold — macIdle > 15 (was 12)
   if (obs.phoneConfirmedDistraction && obs.macIdleMinutes > 15) {
@@ -574,6 +600,14 @@ async function executeSpeak(obs: ObservationState, decision: CognitiveDecision):
     ? `\nPHONE ACTIVITY: ${obs.phoneSummary}\nIf phone drift is the reason for this intervention, reference it specifically and directly.`
     : '';
 
+  const airpodsPart = obs.airpodsConnected
+    ? `\nDELIVERY: Isaac is wearing AirPods. Speak with slightly warmer, more intimate tone — closer and personal, not broadcast.`
+    : '';
+
+  const pcPart = obs.pcDriftContext
+    ? `\nPC CONTEXT: ${obs.pcDriftContext}`
+    : '';
+
   const insights       = getRelevantInsights({
     appContext: obs.activeApp,
     timeOfDay:  obs.timeOfDay,
@@ -605,7 +639,7 @@ CURRENT OBSERVATION STATE:
 - Screen: ${obs.screenSummary}
 - Open commitments: ${obs.openCommitments}
 - Consecutive failed interventions: ${obs.consecutiveFailedInterventions}
-- Relevant facts: ${obs.relevantFacts.join(', ')}${phonePart}
+- Relevant facts: ${obs.relevantFacts.join(', ')}${phonePart}${airpodsPart}${pcPart}
 
 DECISION REASON: ${decision.reason}
 INTERVENTION TIER: ${decision.interventionTier}

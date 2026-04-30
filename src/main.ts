@@ -46,7 +46,7 @@ const { startScreenObserver, setOrbWindow: setObserverOrbWindow } = require('./s
 const { startEmotionEngine } = require('./services/emotionEngine');
 console.error('[Main] loading conversationService');
 const { triggerConversation, stopConversation, setOrbWindow: setConvOrbWindow, handleInterrupt, triggerProactiveConversation } = require('./services/conversationService');
-const { setOrbWindow: setTtsOrbWindow, speak: elevenLabsSpeak } = require('./services/elevenLabsService');
+const { setOrbWindow: setTtsOrbWindow, speak: elevenLabsSpeak, getPreferredOutputDevice } = require('./services/elevenLabsService');
 const { transcribe: whisperTranscribe } = require('./services/whisperService');
 console.error('[Main] loading briefingService');
 const { startBriefingService } = require('./services/briefingService');
@@ -677,6 +677,18 @@ function startFullAxon(): void {
         void (checkMorningBriefingTrigger as () => Promise<void>)();
       }, 3000);
     });
+
+    // AirPods connect detection — greet Isaac when he puts them on
+    let lastOutputDevice = (getPreferredOutputDevice as () => string)();
+    setInterval(() => {
+      const current = (getPreferredOutputDevice as () => string)();
+      if (current === 'airpods' && lastOutputDevice !== 'airpods') {
+        setTimeout(() => {
+          void (elevenLabsSpeak as (text: string) => Promise<void>)("You're up.");
+        }, 2000);
+      }
+      lastOutputDevice = current;
+    }, 30_000);
 
     console.log('[Main] Axon desktop started');
   } catch (err) {

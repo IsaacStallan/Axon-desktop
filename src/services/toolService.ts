@@ -38,6 +38,11 @@ import {
   getStreakSummary,
 } from './consequenceEngine';
 import { calculateDrift } from './patternEngine';
+import {
+  speakOnNearestSpeaker,
+  speakOnAllSpeakers,
+  getConfiguredSpeakers,
+} from './homeAssistant';
 
 // Pending draft waiting for verbal confirmation before send
 let pendingDraft: DraftResult | null = null;
@@ -625,6 +630,37 @@ export const TOOLS: Anthropic.Tool[] = [
     description:
       'Get a detailed breakdown of the current drift analysis — score, tier, confidence, and contributing factors. ' +
       'Use when Isaac asks "why are you watching me?", "what\'s my drift score?", or "what are you seeing right now?".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+
+  // ── Home Assistant / smart speakers ──────────────────────────────────────────
+  {
+    name:        'speak_in_room',
+    description: 'Play a spoken message on a smart speaker in a specific room via Home Assistant. ' +
+                 'Use when Isaac asks Axon to speak in a room, announce something, or play audio on a speaker.',
+    input_schema: {
+      type:       'object',
+      properties: {
+        room:    { type: 'string', description: 'Room name, e.g. "office", "living_room"' },
+        message: { type: 'string', description: 'What to say on the speaker' },
+      },
+      required: ['room', 'message'],
+    },
+  },
+  {
+    name:        'speak_everywhere',
+    description: 'Broadcast a spoken message to all configured smart speakers simultaneously.',
+    input_schema: {
+      type:       'object',
+      properties: {
+        message: { type: 'string', description: 'What to broadcast on all speakers' },
+      },
+      required: ['message'],
+    },
+  },
+  {
+    name:        'list_speakers',
+    description: 'List all configured Home Assistant speakers and their rooms.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
@@ -1271,6 +1307,29 @@ export async function executeTool(
           lines.push(`Factors: ${drift.factors.join(', ')}`);
         }
         return lines.join('\n');
+      }
+
+      // ── Home Assistant speakers ────────────────────────────────────────────────
+
+      case 'speak_in_room': {
+        const room    = (input.room ?? '').trim();
+        const message = (input.message ?? '').trim();
+        if (!room || !message) return 'Room and message are required.';
+        await speakOnNearestSpeaker(message, room);
+        return `Spoke in ${room}: "${message}"`;
+      }
+
+      case 'speak_everywhere': {
+        const message = (input.message ?? '').trim();
+        if (!message) return 'Message is required.';
+        await speakOnAllSpeakers(message);
+        return `Broadcast to all speakers: "${message}"`;
+      }
+
+      case 'list_speakers': {
+        const speakers = getConfiguredSpeakers();
+        if (speakers.length === 0) return 'No speakers configured. Set HOME_ASSISTANT_SPEAKERS in .env.';
+        return speakers.map(s => `- ${s.room}: ${s.entityId}`).join('\n');
       }
 
       default:

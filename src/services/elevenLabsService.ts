@@ -1,15 +1,41 @@
 import axios from 'axios';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { writeFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { BrowserWindow } from 'electron';
+import * as homeAssistant from './homeAssistant';
 
 const API_KEY  = process.env.ELEVENLABS_API_KEY  ?? '';
 const VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? '';
 
 let orbWin: BrowserWindow | null = null;
 export function setOrbWindow(win: BrowserWindow): void { orbWin = win; }
+
+// ── AirPods / audio device detection ─────────────────────────────────────────
+
+function getActiveAudioDevice(): string {
+  if (process.platform !== 'darwin') return '';
+  try {
+    const result = execSync(
+      'SwitchAudioSource -c 2>/dev/null || system_profiler SPAudioDataType 2>/dev/null | grep "Default Output" | head -1',
+      { encoding: 'utf8', timeout: 2_000 },
+    ).trim();
+    return result.toLowerCase();
+  } catch { return ''; }
+}
+
+export function isAirPodsConnected(): boolean {
+  const device = getActiveAudioDevice();
+  return device.includes('airpods') || device.includes('airpod') || device.includes('beats');
+}
+
+export function getPreferredOutputDevice(): 'airpods' | 'mac_speakers' | 'external' {
+  const device = getActiveAudioDevice();
+  if (device.includes('airpods') || device.includes('airpod')) return 'airpods';
+  if (device.includes('external') || device.includes('hdmi'))  return 'external';
+  return 'mac_speakers';
+}
 
 // Windows only — macOS uses afplay (built-in)
 const SOX_PATH      = process.env.SOX_PATH ?? 'C:\\Program Files (x86)\\sox-14-4-2\\sox.exe';
@@ -186,10 +212,23 @@ async function speakChunk(text: string): Promise<void> {
   const wav = Buffer.concat([buildWavHeader(pcmData.byteLength), pcmData]);
   writeFileSync(TMP_FILE, wav);
 
+  // Fire-and-forget HA broadcast so local playback is not blocked
+  if (process.env.HOME_ASSISTANT_URL) {
+    const speakers = homeAssistant.getConfiguredSpeakers();
+    if (speakers.length > 0) {
+      const roomName = isAirPodsConnected() ? 'living_room' : 'office';
+      const haTarget = speakers.find(s => s.room === roomName) ?? speakers[0];
+      homeAssistant.speakWithElevenLabsOnSpeaker(haTarget, wav)
+        .catch(e => console.error('[ElevenLabs] HA broadcast failed:', e));
+    }
+  }
+
   await new Promise<void>((resolve) => {
+    const airpods = isAirPodsConnected();
+    const volume  = airpods ? '0.85' : '1.0';
     const [playerPath, playerArgs]: [string, string[]] =
       process.platform === 'darwin'
-        ? ['afplay', [TMP_FILE]]
+        ? ['afplay', ['-v', volume, TMP_FILE]]
         : [SOX_PATH, ['-t', 'wav', TMP_FILE, '-t', SOX_AUDIO_OUT, 'default']];
 
     const player = spawn(playerPath, playerArgs, { shell: false });
