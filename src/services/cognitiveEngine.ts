@@ -4,7 +4,18 @@ import { app } from 'electron';
 import fs   from 'fs';
 import path from 'path';
 import { getCurrentApp, getSessionLog } from './windowMonitor';
-import { analyzeCurrentState }           from './patternEngine';
+import { calculateDrift, DriftAnalysis } from './patternEngine';
+import {
+  initConsequenceEngine,
+  fireTier1Consequence,
+  fireTier2Consequence,
+  checkCommitments,
+  setConfirmedDriftStart,
+  clearConfirmedDrift,
+  getConfirmedDriftMinutes,
+  recordDriftResolved,
+  recordDriftOccurred,
+} from './consequenceEngine';
 import { getRecentContext }              from './screenAwareness';
 import { getLastChangeScore }           from './screenObserver';
 import { getTodayEvents }               from './calendarService';
@@ -62,6 +73,12 @@ interface ObservationState {
   isInMeeting:                    boolean;
   driftScore:                     number;
   driftTier:                      0 | 1 | 2 | 3;
+  driftFactors:                   string[];
+  driftDominantFactor:            string;
+  driftConfidence:                number;
+  recentCommitActivity:           boolean;
+  consecutiveNeutralApps:         number;
+  lastProductiveAppMinutes:       number;
   sessionFocusMinutes:            number;
   lastBreakMinutes:               number;
   lastMovementMinutes:            number;
@@ -197,16 +214,13 @@ async function collectObservations(): Promise<ObservationState> {
 
   const curr    = getCurrentApp();
   const log     = getSessionLog();
-  const pattern = analyzeCurrentState();
+  const drift   = calculateDrift();
 
   const prevEntry          = log.length >= 2 ? log[log.length - 2] : null;
   const previousApp        = prevEntry?.name ?? 'none';
   const previousAppMinutes = prevEntry ? Math.round(prevEntry.durationMs / 60_000) : 0;
 
-  const driftTier: ObservationState['driftTier'] =
-    pattern.driftProbability < 60 ? 0 :
-    pattern.tier === 'predictive' ? 1 :
-    pattern.tier === 'early'      ? 2 : 3;
+  const driftTier = drift.tier;
 
   // Calendar
   let events: Awaited<ReturnType<typeof getTodayEvents>> = [];
@@ -251,7 +265,7 @@ async function collectObservations(): Promise<ObservationState> {
   // Capacity
   const screenTimeMins      = getSystemScreenTimeToday();
   const cogStats            = getCognitiveStats(screenTimeMins);
-  const sessionFocusMinutes = Math.round(pattern.continuousFocusMins);
+  const sessionFocusMinutes = Math.round(drift.continuousFocusMins);
 
   const goals      = getActiveGoals();
   const weeklyPlan = getWeeklyPlanForToday() as DayPlan | null;
@@ -306,8 +320,14 @@ async function collectObservations(): Promise<ObservationState> {
     nextEventTitle:                 nextEvent?.title ?? null,
     currentEventTitle:              currentEvent?.title ?? null,
     isInMeeting,
-    driftScore:                     pattern.driftProbability,
+    driftScore:                     drift.score,
     driftTier,
+    driftFactors:                   drift.factors,
+    driftDominantFactor:            drift.dominantFactor,
+    driftConfidence:                drift.confidence,
+    recentCommitActivity:           drift.recentCommitActivity,
+    consecutiveNeutralApps:         drift.consecutiveNeutralApps,
+    lastProductiveAppMinutes:       drift.lastProductiveAppMins,
     sessionFocusMinutes,
     lastBreakMinutes,
     lastMovementMinutes:            macIdleMinutes,
@@ -702,6 +722,7 @@ export async function startCognitiveLoop(onTriggerFn?: () => void): Promise<void
   if (cognitiveLoopRunning) return;
   cognitiveLoopRunning = true;
   if (onTriggerFn) onTrigger = onTriggerFn;
+  initConsequenceEngine();
   console.log('[CognitiveEngine] starting 60-second cognitive loop');
 
   while (cognitiveLoopRunning) {
@@ -732,6 +753,47 @@ export async function startCognitiveLoop(onTriggerFn?: () => void): Promise<void
         case 'update_model':
           break;
       }
+
+      // ── Consequence engine ─────────────────────────────────────────────────
+      if (obs.driftTier >= 2 && obs.driftScore >= 60) {
+        setConfirmedDriftStart();
+        recordDriftOccurred();
+      } else if (obs.driftTier === 0) {
+        if (getConfirmedDriftMinutes() > 0) recordDriftResolved();
+        clearConfirmedDrift();
+      }
+
+      const confirmedDriftMins = getConfirmedDriftMinutes();
+
+      // Tier 1: close distraction app after 2 ignored interventions + 10 min drift
+      if (obs.driftTier >= 2 && obs.consecutiveFailedInterventions >= 2 && confirmedDriftMins >= 10) {
+        await fireTier1Consequence(obs.activeApp, speak).catch(() => {});
+      }
+
+      // Tier 2: iMessage accountability after 3 ignored + 45 min confirmed drift
+      if (obs.driftTier >= 2 && obs.consecutiveFailedInterventions >= 3 && confirmedDriftMins >= 45) {
+        await fireTier2Consequence({
+          ignoredCount:       obs.consecutiveFailedInterventions,
+          driftMinutes:       confirmedDriftMins,
+          isConfirmedDrift:   obs.driftScore >= 60,
+          driftScore:         obs.driftScore,
+          timeOfDay:          obs.timeOfDay,
+          hasWorkCommitments: obs.openCommitments > 0,
+          activeApp:          obs.activeApp,
+          recentActivityOk:   obs.recentCommitActivity,
+          speakFn:            speak,
+        }).catch(() => {});
+      }
+
+      // Tier 3: check future commitments every 5 min (rate limited inside)
+      await checkCommitments({
+        activeApp:  obs.activeApp,
+        driftScore: obs.driftScore,
+        timeOfDay:  obs.timeOfDay,
+        driftTier:  obs.driftTier,
+        speakFn:    speak,
+      }).catch(() => {});
+
     } catch (err) {
       console.error('[CognitiveEngine] loop error:', err);
     }

@@ -31,6 +31,13 @@ import { analyseOnDemand } from './screenAwareness';
 import { syncToObsidian } from './obsidianSync';
 import { generateiOSShortcutInstructions } from './shortcutGenerator';
 import { getPhoneSessionSummary } from './phoneMonitor';
+import {
+  captureCommitment,
+  setAccountabilityContact,
+  getAccountabilityContact,
+  getStreakSummary,
+} from './consequenceEngine';
+import { calculateDrift } from './patternEngine';
 
 // Pending draft waiting for verbal confirmation before send
 let pendingDraft: DraftResult | null = null;
@@ -573,6 +580,51 @@ export const TOOLS: Anthropic.Tool[] = [
     name:        'check_phone_activity',
     description: 'Check what Isaac has been doing on his phone in the last 30 minutes. ' +
                  'Use when he asks "what have I been doing on my phone?", "what\'s on my phone?", or "phone activity".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+
+  // ── Consequence & accountability ──────────────────────────────────────────────
+  {
+    name:        'capture_commitment',
+    description:
+      'Capture a conditional commitment Isaac makes — "if I do X, then Y happens". ' +
+      'Axon will automatically trigger the consequence when the condition is met. ' +
+      'Use when Isaac says "if I open YouTube during work hours, block me for 30 minutes" or similar.',
+    input_schema: {
+      type:       'object',
+      properties: {
+        condition:   { type: 'string', description: 'The triggering condition, e.g. "if I open YouTube during work hours"' },
+        consequence: { type: 'string', description: 'What happens if the condition is met, e.g. "block my Mac for 30 minutes"' },
+      },
+      required: ['condition', 'consequence'],
+    },
+  },
+  {
+    name:        'set_accountability_contact',
+    description:
+      'Set an accountability contact (iPhone number or iMessage handle) who will be messaged ' +
+      'if Isaac goes off task for an extended period after ignoring multiple interventions. ' +
+      'Use when Isaac says "if I drift for too long, message [name]" or "set [name] as my accountability partner".',
+    input_schema: {
+      type:       'object',
+      properties: {
+        contact: { type: 'string', description: 'iPhone number or iMessage handle, e.g. "+61412345678" or "name@example.com"' },
+      },
+      required: ['contact'],
+    },
+  },
+  {
+    name:        'get_streak_summary',
+    description:
+      'Get the current drift-free streak — how many consecutive days Isaac stayed on task. ' +
+      'Use when he asks "how is my streak?", "how many days clean?", or "what\'s my focus streak?".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name:        'get_drift_analysis',
+    description:
+      'Get a detailed breakdown of the current drift analysis — score, tier, confidence, and contributing factors. ' +
+      'Use when Isaac asks "why are you watching me?", "what\'s my drift score?", or "what are you seeing right now?".',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
@@ -1172,6 +1224,53 @@ export async function executeTool(
 
       case 'check_phone_activity': {
         return await getPhoneSessionSummary();
+      }
+
+      // ── Consequence & accountability ───────────────────────────────────────────
+
+      case 'capture_commitment': {
+        const condition   = (input.condition ?? '').trim();
+        const consequence = (input.consequence ?? '').trim();
+        if (!condition || !consequence) return 'Both condition and consequence are required.';
+        const commitment = captureCommitment(condition, consequence);
+        return `Commitment captured.\nIf: "${commitment.condition}"\nThen: "${commitment.consequence}"\nI'll enforce this automatically.`;
+      }
+
+      case 'set_accountability_contact': {
+        const contact = (input.contact ?? '').trim();
+        if (!contact) return 'No contact provided.';
+        setAccountabilityContact(contact);
+        return `Accountability contact set to: ${contact}. If you ignore multiple interventions and drift for 45+ minutes during work hours, I'll message them.`;
+      }
+
+      case 'get_streak_summary': {
+        const summary = getStreakSummary();
+        const lines = [
+          summary.message,
+          `Current: ${summary.currentStreak} day${summary.currentStreak === 1 ? '' : 's'}`,
+          `Best: ${summary.longestStreak} days`,
+          `Total drift-free days: ${summary.totalDriftFreeDays}`,
+        ];
+        return lines.join('\n');
+      }
+
+      case 'get_drift_analysis': {
+        const drift = calculateDrift();
+        const tierLabels = ['nominal', 'predictive (tier 1)', 'early (tier 2)', 'recovery (tier 3)'];
+        const lines = [
+          `Drift score: ${drift.score}/100`,
+          `Tier: ${tierLabels[drift.tier]}`,
+          `Confidence: ${drift.confidence}%`,
+          `Confirmed drift: ${drift.isConfirmedDrift ? 'yes' : 'no'}`,
+          `App: ${drift.appProfile.nameFragment} (base distraction: ${drift.appProfile.baseDistraction}%)`,
+          `Consecutive off-task apps: ${drift.consecutiveNeutralApps}`,
+          `Recent productive output: ${drift.recentCommitActivity ? 'yes' : 'none detected'}`,
+          `Last productive app: ${drift.lastProductiveAppMins >= 999 ? 'none today' : `${Math.round(drift.lastProductiveAppMins)}min ago`}`,
+        ];
+        if (drift.factors.length > 0) {
+          lines.push(`Factors: ${drift.factors.join(', ')}`);
+        }
+        return lines.join('\n');
       }
 
       default:
