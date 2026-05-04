@@ -1,4 +1,5 @@
 import { getClient, getDeviceId } from './cloudSync';
+import { isPhoneActive as mdmPhoneActive, getPhoneIdleMinutes } from './mdmServer';
 
 // ── Distraction app list ───────────────────────────────────────────────────────
 
@@ -52,6 +53,11 @@ export async function isOnPhoneDistraction(): Promise<{
   app:         string | null;
   minutesAgo:  number | null;
 }> {
+  // MDM check-in is the highest-confidence phone presence signal (AXON_CORE_MODE only)
+  if (process.env.AXON_CORE_MODE === 'true' && mdmPhoneActive()) {
+    return { confirmed: true, app: 'iPhone (MDM)', minutesAgo: Math.round(getPhoneIdleMinutes()) };
+  }
+
   const activity    = await getRecentPhoneActivity(5);
   const distraction = activity.find(a =>
     DISTRACTION_APPS.some(d => a.app_name.toLowerCase().includes(d.toLowerCase())),

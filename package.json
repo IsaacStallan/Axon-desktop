@@ -12,7 +12,9 @@
     "deploy": "wrangler deploy",
     "preview": "wrangler dev",
     "generate-training-data": "ts-node --transpile-only scripts/generate_training_data.ts",
-    "import-model": "bash scripts/import_model.sh"
+    "import-model": "bash scripts/import_model.sh",
+    "setup-mdm": "bash scripts/setup_mdm.sh",
+    "start-mdm-server": "ts-node --transpile-only src/services/mdmServer.ts"
   },
   "build": {
     "publish": {

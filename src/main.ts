@@ -58,6 +58,7 @@ const { isGmailConnected } = require('./services/gmailService');
 const { getAllDeviceStatuses } = require('./services/deviceCoordinator');
 const { getClient: getSupabaseClient } = require('./services/cloudSync');
 const { pullCollectiveInsights, logCollectiveSetupSQL } = require('./services/collectiveIntelligence');
+const { startMDMServer } = require('./services/mdmServer');
 console.error('[Main] all imports done');
 
 // ── Global error handlers ─────────────────────────────────────────────────────
@@ -682,6 +683,9 @@ function startFullAxon(): void {
 
     if (AXON_CORE_MODE) {
       console.log('[Main] Axon Core mode enabled — personal instance features active');
+
+      // MDM server — receives iPhone check-ins for presence detection
+      (startMDMServer as () => void)();
 
       // AirPods connect detection — greet Isaac when he puts them on
       let lastOutputDevice = (getPreferredOutputDevice as () => string)();
