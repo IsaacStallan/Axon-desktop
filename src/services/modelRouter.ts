@@ -1,5 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 
+const AXON_CORE_MODE   = process.env.AXON_CORE_MODE === 'true';
+const LOCAL_MODEL_NAME = process.env.AXON_LOCAL_MODEL ?? 'axon-personal';
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export type MessageComplexity = 'simple' | 'moderate' | 'complex';
@@ -67,6 +70,24 @@ const CONFIRM_RE      = /^(yes|no|ok|okay|sure|yep|nope|nah|sounds good|do it|go
 const STATUS_RE       = /^(what time is it|what am i doing|how long have i been|what'?s the time|what day is it|what are you doing)\b/i;
 const COMPLEX_KW_RE   = /\b(plan|strategy|build|creat|implement|design|analy[sz]|write|review|explain|help me|(how|what|why) (do|can|should|is|are|did)|goal|project|business|decision|should i|think about|advice|cod(e|ing)|debug|fix|optim|architect|structur|strateg|priorit|reflect|weekly|monthly)\b/i;
 
+// ── Tool-intent classifier ─────────────────────────────────────────────────────
+// If Isaac is asking Axon to DO something that requires a tool — always Sonnet.
+// Haiku and free tiers don't reliably execute tools autonomously.
+
+const TOOL_INTENT_PATTERNS = [
+  /add (to|it to|that to|this to)/i,
+  /put (it|that|this) (in|on|into)/i,
+  /schedule|calendar|remind|block out|lock in/i,
+  /search for|find me|look up|research/i,
+  /create|write|draft|build|make me/i,
+  /open|close|play|pause|stop/i,
+  /lock me out|soft lock|gym time/i,
+];
+
+function hasToolIntent(text: string): boolean {
+  return TOOL_INTENT_PATTERNS.some(p => p.test(text));
+}
+
 /**
  * Classifies a user message into simple / moderate / complex before any API call.
  * Pass historyLength (turns already in session) so in-session confirmations are
@@ -78,6 +99,12 @@ export function classifyMessageComplexity(
 ): MessageComplexity {
   const trimmed   = transcript.trim();
   const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+
+  // Tool-intent check — always Sonnet; it's the only model that reliably executes tools
+  if (hasToolIntent(trimmed)) {
+    console.log('[ModelRouter] tool intent detected → complex (Sonnet)');
+    return 'complex';
+  }
 
   // Complex thresholds — always Sonnet
   if (wordCount > 25)              return 'complex';
@@ -126,6 +153,70 @@ function logMonthlyCostEstimate(): void {
 }
 
 setInterval(logMonthlyCostEstimate, 3_600_000);
+
+// ── Tier 0: axon-personal fine-tuned model (AXON_CORE_MODE only) ──────────────
+
+interface OllamaChatResponse {
+  message?: { content?: string };
+}
+
+interface OllamaTagsResponse {
+  models?: Array<{ name: string }>;
+}
+
+export async function routeAxonLocal(
+  systemPrompt: string,
+  userMessage:  string,
+): Promise<string | null> {
+  if (!AXON_CORE_MODE) return null;
+
+  try {
+    const healthCheck = await fetch('http://localhost:11434/api/tags', {
+      signal: AbortSignal.timeout(1_000),
+    }).catch(() => null);
+
+    if (!healthCheck?.ok) {
+      console.log('[ModelRouter] Ollama not running — skipping local model');
+      return null;
+    }
+
+    const models = await healthCheck.json() as OllamaTagsResponse;
+    const hasAxonModel = models.models?.some(m => m.name.includes(LOCAL_MODEL_NAME));
+
+    if (!hasAxonModel) {
+      console.log('[ModelRouter] axon-personal model not found — skipping');
+      return null;
+    }
+
+    const response = await fetch('http://localhost:11434/api/chat', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model:    LOCAL_MODEL_NAME,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: userMessage },
+        ],
+        stream:  false,
+        options: { temperature: 0.7, num_predict: 150, top_p: 0.9, repeat_penalty: 1.1 },
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!response.ok) return null;
+
+    const data   = await response.json() as OllamaChatResponse;
+    const result = data.message?.content?.trim();
+    if (!result || result.length < 3) return null;
+
+    console.log('[ModelRouter] tier0 → axon-personal (local)');
+    callCounts.ollama++;
+    return result;
+  } catch (err) {
+    console.log('[ModelRouter] local model failed — falling through:', (err as Error).message.slice(0, 60));
+    return null;
+  }
+}
 
 // ── Ollama (Tier 1) ────────────────────────────────────────────────────────────
 
@@ -347,6 +438,10 @@ export async function route(opts: RouteOptions): Promise<string> {
  * Never throws.
  */
 export async function routeSimple(system: string, userText: string): Promise<string> {
+  // Tier 0 — local fine-tuned (AXON_CORE_MODE only)
+  const local = await routeAxonLocal(system, userText);
+  if (local) return local;
+
   // Tool-use override: skip free tiers entirely if tools are expected.
   if (requiresToolUse(userText)) {
     console.log('[ModelRouter] simple → sonnet (tool-use override)');
@@ -382,6 +477,10 @@ export async function routeSimple(system: string, userText: string): Promise<str
  * Never throws.
  */
 export async function routeModerate(system: string, userText: string, maxTokens = 200): Promise<string> {
+  // Tier 0 — local fine-tuned (AXON_CORE_MODE only)
+  const local = await routeAxonLocal(system, userText);
+  if (local) return local;
+
   if (requiresToolUse(userText)) {
     console.log('[ModelRouter] moderate → sonnet (tool-use override)');
     callCounts.sonnet++;

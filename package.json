@@ -11,7 +11,8 @@
     "publish": "electron-forge publish",
     "deploy": "wrangler deploy",
     "preview": "wrangler dev",
-    "generate-training-data": "ts-node --transpile-only scripts/generate_training_data.ts"
+    "generate-training-data": "ts-node --transpile-only scripts/generate_training_data.ts",
+    "import-model": "bash scripts/import_model.sh"
   },
   "build": {
     "publish": {

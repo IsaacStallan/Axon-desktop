@@ -44,6 +44,9 @@ import { recordTokens }                 from './costTracker';
 import * as phoneMonitor                from './phoneMonitor';
 import { getRelevantInsights, getLearningProfile } from './collectiveIntelligence';
 import { ARETICA_VISION }              from './areticaVision';
+import { routeAxonLocal }              from './modelRouter';
+
+const AXON_CORE_MODE = process.env.AXON_CORE_MODE === 'true';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '', maxRetries: 3 });
 
@@ -580,6 +583,23 @@ async function routeByTier(tier: CognitiveDecision['modelTier'], prompt: string)
   }
 }
 
+// Tier 0 wrapper — tries axon-personal local model for tier-1 interventions,
+// falls through to the existing Anthropic routeByTier on miss or absence.
+async function routeIntervention(
+  prompt:     string,
+  tier:       number,
+  modelTier:  CognitiveDecision['modelTier'],
+): Promise<string> {
+  if (tier === 1 && AXON_CORE_MODE) {
+    const local = await routeAxonLocal('', prompt);
+    if (local) {
+      console.log('[CognitiveEngine] tier1 intervention → axon-personal');
+      return local;
+    }
+  }
+  return routeByTier(modelTier, prompt);
+}
+
 // ── Execute speak ──────────────────────────────────────────────────────────────
 
 async function executeSpeak(obs: ObservationState, decision: CognitiveDecision): Promise<void> {
@@ -672,7 +692,7 @@ Bad interventions (never do these):
 - "It appears you may be experiencing some difficulty focusing. Here are some suggestions:"
 - "Certainly! I can see that you're in a drift pattern. Would you like me to help?"`;
 
-  const message = await routeByTier(decision.modelTier, prompt);
+  const message = await routeIntervention(prompt, decision.interventionTier ?? 1, decision.modelTier);
   if (!message || message.trim().toUpperCase() === 'SKIP') return;
 
   if (!(await acquireSpeakerLock(60_000))) {
