@@ -6,6 +6,18 @@ import { join } from 'path';
 import { BrowserWindow } from 'electron';
 import * as homeAssistant from './homeAssistant';
 
+// ── Connection pre-warm ───────────────────────────────────────────────────────
+
+export async function prewarmElevenLabs(): Promise<void> {
+  if (!process.env.ELEVENLABS_API_KEY) return;
+  try {
+    await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY },
+    });
+    console.log('[ElevenLabs] connection pre-warmed');
+  } catch { /* ignore — startup is not blocked by this */ }
+}
+
 const API_KEY  = process.env.ELEVENLABS_API_KEY  ?? '';
 const VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? '';
 
@@ -183,8 +195,8 @@ async function speakChunk(text: string): Promise<void> {
     `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=pcm_22050`,
     {
       text,
-      model_id: 'eleven_flash_v2_5',
-      voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.5 },
+      model_id: 'eleven_turbo_v2_5',
+      voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true },
     },
     {
       headers: {
@@ -269,7 +281,46 @@ async function speakChunk(text: string): Promise<void> {
   try { unlinkSync(TMP_FILE); } catch { /* ignore cleanup errors */ }
 }
 
-// ── Public speak() — splits long text, speaks all chunks sequentially ─────────
+// ── Single-file audio playback ────────────────────────────────────────────────
+
+async function playAudioFile(filePath: string): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const airpods = process.env.AXON_CORE_MODE === 'true' && isAirPodsConnected();
+    const volume  = airpods ? '0.85' : '1.0';
+
+    const [playerPath, playerArgs]: [string, string[]] =
+      process.platform === 'darwin'
+        ? ['afplay', ['-v', volume, filePath]]
+        : [SOX_PATH, ['-t', 'mp3', filePath, '-t', SOX_AUDIO_OUT, 'default']];
+
+    const player = spawn(playerPath, playerArgs, { shell: false });
+    currentPlayback = { kill: () => player.kill() };
+
+    const timer = setTimeout(() => {
+      console.warn('[ElevenLabs] playback hard cap — killing player');
+      player.kill();
+      resolve();
+    }, 60_000);
+
+    player.on('close', (code) => {
+      clearTimeout(timer);
+      currentPlayback = null;
+      if (code !== 0 && code !== null && !speakInterrupted) {
+        console.warn('[ElevenLabs] player exited with code:', code);
+      }
+      resolve();
+    });
+
+    player.on('error', (err) => {
+      clearTimeout(timer);
+      console.warn('[ElevenLabs] player error:', err.message);
+      resolve();
+    });
+  });
+}
+
+// ── Public speak() — single API call → one MP3 → one playback ────────────────
+// Sends the full sanitised text as one request so there are no inter-chunk gaps.
 
 export async function speak(text: string): Promise<void> {
   console.log('[ElevenLabs] speak:', text.slice(0, 80));
@@ -279,39 +330,78 @@ export async function speak(text: string): Promise<void> {
     return;
   }
 
-  // Reset interrupt flag and store full text for interrupt context
   speakInterrupted = false;
   setCurrentSpeechText(text);
 
-  // Sanitise markdown/symbols before sending to ElevenLabs.
   const sanitised = sanitiseForTTS(text);
-
-  // Buffer the full response before playing — streaming PCM to SoX stdin
-  // causes premature EOF on macOS after the first chunk.
-  const chunks = splitOnSentences(sanitised, 1800);
-  if (chunks.length > 1) {
-    console.log(`[ElevenLabs] text split into ${chunks.length} chunks for sequential delivery`);
-  }
+  if (!sanitised.trim()) return;
 
   isSpeaking = true;
   orbWin?.webContents.send('orb:state', 'speaking');
 
+  const tempFile = join(tmpdir(), `axon_speech_${Date.now()}.mp3`);
+
   try {
-    for (const chunk of chunks) {
-      if (speakInterrupted) break;
-      if (chunk.trim().length === 0) continue;
-      await speakChunk(chunk);
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream`,
+      {
+        method:  'POST',
+        headers: { 'xi-api-key': API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text:          sanitised,
+          model_id:      'eleven_turbo_v2_5',
+          voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true },
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      console.warn('[ElevenLabs] API error:', response.status);
+      return;
+    }
+
+    // Collect all streaming chunks into one contiguous buffer before playing
+    const parts: Buffer[] = [];
+    const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) parts.push(Buffer.from(value));
+    }
+
+    const audioBuffer = Buffer.concat(parts);
+    console.log('[ElevenLabs] received', audioBuffer.byteLength, 'bytes');
+
+    if (audioBuffer.byteLength < 200) {
+      console.warn('[ElevenLabs] suspiciously small response — skipping playback');
+      return;
+    }
+
+    writeFileSync(tempFile, audioBuffer);
+
+    // HA broadcast (fire-and-forget, Core mode only)
+    if (process.env.AXON_CORE_MODE === 'true' && process.env.HOME_ASSISTANT_URL) {
+      const speakers = homeAssistant.getConfiguredSpeakers();
+      if (speakers.length > 0) {
+        const roomName = isAirPodsConnected() ? 'living_room' : 'office';
+        const haTarget = speakers.find(s => s.room === roomName) ?? speakers[0];
+        homeAssistant.speakWithElevenLabsOnSpeaker(haTarget, audioBuffer)
+          .catch(e => console.error('[ElevenLabs] HA broadcast failed:', e));
+      }
+    }
+
+    if (!speakInterrupted) {
+      await playAudioFile(tempFile);
     }
   } catch (e) {
     if (!speakInterrupted) console.warn('[ElevenLabs] TTS failed:', e);
   } finally {
     isSpeaking = false;
-    // Don't send 'idle' on interrupt — the interrupt handler sets 'listening' instead
     if (!speakInterrupted) {
       orbWin?.webContents.send('orb:state', 'idle');
     }
-    // Clear stored text on normal completion; on interrupt it was already cleared
     interruptedText  = null;
     speakInterrupted = false;
+    try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
   }
 }

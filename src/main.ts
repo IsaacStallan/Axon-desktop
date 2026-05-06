@@ -46,7 +46,7 @@ const { startScreenObserver, setOrbWindow: setObserverOrbWindow } = require('./s
 const { startEmotionEngine } = require('./services/emotionEngine');
 console.error('[Main] loading conversationService');
 const { triggerConversation, stopConversation, setOrbWindow: setConvOrbWindow, handleInterrupt, triggerProactiveConversation } = require('./services/conversationService');
-const { setOrbWindow: setTtsOrbWindow, speak: elevenLabsSpeak, getPreferredOutputDevice } = require('./services/elevenLabsService');
+const { setOrbWindow: setTtsOrbWindow, speak: elevenLabsSpeak, getPreferredOutputDevice, prewarmElevenLabs } = require('./services/elevenLabsService');
 const { transcribe: whisperTranscribe } = require('./services/whisperService');
 console.error('[Main] loading briefingService');
 const { startBriefingService } = require('./services/briefingService');
@@ -624,6 +624,7 @@ function startFullAxon(): void {
       },
     );
 
+    void (prewarmElevenLabs as () => Promise<void>)();
     startWindowMonitor();
     void verifySupabaseTables();
     void (pullCollectiveInsights as () => Promise<void>)();       // pull anonymised insights, log SQL if tables missing
