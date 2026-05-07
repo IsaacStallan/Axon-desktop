@@ -18,6 +18,67 @@ const SPEECH_RMS_MIN     = 500;                           // skip Whisper if RMS
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? '' });
 
+// ── Pre-wake rolling buffer ────────────────────────────────────────────────────
+
+const PRE_WAKE_BUFFER_SECONDS = 30;
+const PRE_WAKE_BYTES_PER_SEC  = SAMPLE_RATE * 2;  // 16-bit mono
+
+class RollingAudioBuffer {
+  private chunks:     Buffer[] = [];
+  private totalBytes = 0;
+  private maxBytes:   number;
+
+  constructor(maxSeconds: number) {
+    this.maxBytes = maxSeconds * PRE_WAKE_BYTES_PER_SEC;
+  }
+
+  push(chunk: Buffer): void {
+    this.chunks.push(chunk);
+    this.totalBytes += chunk.length;
+    while (this.totalBytes > this.maxBytes && this.chunks.length > 0) {
+      this.totalBytes -= this.chunks.shift()!.length;
+    }
+  }
+
+  getLastSeconds(seconds: number): Buffer {
+    const bytesNeeded = seconds * PRE_WAKE_BYTES_PER_SEC;
+    let collected = 0;
+    let startIdx  = this.chunks.length;
+    while (startIdx > 0 && collected < bytesNeeded) {
+      startIdx--;
+      collected += this.chunks[startIdx].length;
+    }
+    return Buffer.concat(this.chunks.slice(startIdx));
+  }
+
+  clear(): void {
+    this.chunks    = [];
+    this.totalBytes = 0;
+  }
+}
+
+const preWakeBuffer = new RollingAudioBuffer(PRE_WAKE_BUFFER_SECONDS);
+
+let preWakeContextStr = '';
+
+/** Read and clear the pre-wake context set by the last wake-word detection. */
+export function popPreWakeContext(): string {
+  const ctx     = preWakeContextStr;
+  preWakeContextStr = '';
+  return ctx;
+}
+
+async function transcribePreWakeAudio(seconds: number): Promise<string> {
+  const pcm = preWakeBuffer.getLastSeconds(seconds);
+  if (pcm.length < 1000) return '';
+  try {
+    return await transcribeBuffer(pcm);
+  } catch (err) {
+    console.warn('[VoiceListener] pre-wake transcription failed:', err);
+    return '';
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type StateCallback = (state: 'idle' | 'listening' | 'speaking' | 'thinking' | 'urgent') => void;
@@ -344,7 +405,9 @@ function runMacSession(onWakeWord: () => void, gen: number): Promise<void> {
 
     const chunkHandler = (_e: unknown, data: unknown) => {
       if (stopFlag || gen !== sessionGen) return;
-      audioChunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data as Uint8Array));
+      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as Uint8Array);
+      audioChunks.push(buf);
+      preWakeBuffer.push(buf);
     };
 
     const errorHandler = (_e: unknown, msg: string) => {
@@ -411,6 +474,18 @@ function runMacSession(onWakeWord: () => void, gen: number): Promise<void> {
             }
 
             stopFlag = true;
+
+            // Transcribe the last 15 s before the wake word for full-sentence context
+            const preCtx = await transcribePreWakeAudio(15);
+            const hasRealContent = preCtx.length > 10 &&
+              !preCtx.toLowerCase().includes('[music]') &&
+              !preCtx.toLowerCase().includes('[silence]');
+            if (hasRealContent) {
+              console.log(`[VoiceListener] pre-wake context: "${preCtx}"`);
+              preWakeContextStr = preCtx;
+            }
+            preWakeBuffer.clear();
+
             onWakeWord();
             settle(() => resolve());
           }
@@ -433,6 +508,7 @@ async function runWindowsSession(onWakeWord: () => void): Promise<void> {
     let pcm: Buffer;
     try {
       pcm = await recordSoxChunk(WINDOW_MS / 1000);
+      preWakeBuffer.push(pcm);
     } catch (e) {
       if (stopFlag) break;
       console.warn('[VoiceListener] SoX record error:', e);
@@ -469,6 +545,17 @@ async function runWindowsSession(onWakeWord: () => void): Promise<void> {
         }
 
         stopFlag = true;
+
+        const preCtx = await transcribePreWakeAudio(15);
+        const hasRealContent = preCtx.length > 10 &&
+          !preCtx.toLowerCase().includes('[music]') &&
+          !preCtx.toLowerCase().includes('[silence]');
+        if (hasRealContent) {
+          console.log(`[VoiceListener] pre-wake context: "${preCtx}"`);
+          preWakeContextStr = preCtx;
+        }
+        preWakeBuffer.clear();
+
         onWakeWord();
         return;
       }
@@ -549,7 +636,11 @@ async function listenForOneChunk(): Promise<Buffer> {
     let finished = false;
 
     const chunkHandler = (_e: unknown, data: unknown) => {
-      if (!finished) audioChunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data as Uint8Array));
+      if (!finished) {
+        const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as Uint8Array);
+        audioChunks.push(buf);
+        preWakeBuffer.push(buf);
+      }
     };
 
     ipcMain.on('mic:chunk', chunkHandler);
@@ -626,6 +717,18 @@ export async function startPersistentWakeWordLoop(
           }
           inConversation  = true;   // pause loop before callback fires
           listeningActive = false;
+
+          // Transcribe last 15 s before the wake word for full-sentence context
+          const preCtx = await transcribePreWakeAudio(15);
+          const hasRealContent = preCtx.length > 10 &&
+            !preCtx.toLowerCase().includes('[music]') &&
+            !preCtx.toLowerCase().includes('[silence]');
+          if (hasRealContent) {
+            console.log(`[VoiceListener] pre-wake context: "${preCtx}"`);
+            preWakeContextStr = preCtx;
+          }
+          preWakeBuffer.clear();
+
           savedOnWakeWord();
         }
       }

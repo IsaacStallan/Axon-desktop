@@ -19,7 +19,7 @@ import { killCurrentRecording } from './whisperService';
 import { getPendingTasksText } from './taskStore';
 import { getGoalsText, hasGoals, addGoal, type Goal } from './goalService';
 import { getOpenCommitmentsText, extractCommitmentsFromSession, detectCompletionsFromTranscript } from './commitmentTracker';
-import { isSleepWord, stopVoiceListener, setInConversation } from './voiceListener';
+import { isSleepWord, stopVoiceListener, setInConversation, popPreWakeContext } from './voiceListener';
 import { formatProactiveContext } from './proactiveContext';
 import { getCurrentScreenSummary } from './screenAwareness';
 import { getPersonality, getEmotionPromptFragment } from './emotionEngine';
@@ -139,6 +139,7 @@ let conversationActive  = false;
 let lastAxonResponse    = '';
 let lastSendDidStream   = false;
 let lastTurnUsedTools   = false;
+let pendingPreWakeContext = '';
 
 // Buffers for memory — reset at the start of each conversation session
 const sessionExchanges: Exchange[] = [];
@@ -623,6 +624,11 @@ Right: [calls calendar_write tool] "Done. Added Axon deep work block Monday 2 to
 Never describe an action you are about to take. Take it, then report it.
 
 ${(() => {
+  if (!pendingPreWakeContext) return '';
+  const ctx = pendingPreWakeContext;
+  pendingPreWakeContext = '';
+  return `\nPRE-WAKE CONTEXT: Before saying your name, Isaac said this:\n"${ctx}"\nAddress what he was saying directly — don't ask him to repeat himself.\n`;
+})()}${(() => {
   const r = getSessionContext('last_silent_task');
   return r ? `\nBACKGROUND TASK RESULT (completed silently while you were working):\n${r}\n` : '';
 })()}`;
@@ -973,6 +979,12 @@ export async function triggerConversation(): Promise<void> {
 
   // Load recent session note — injected into system prompt if within 2 hours
   recentSessionNote = loadRecentSession();
+
+  // Capture any pre-wake context the voice listener transcribed before the wake word
+  pendingPreWakeContext = popPreWakeContext();
+  if (pendingPreWakeContext) {
+    console.log(`[Conversation] pre-wake context captured: "${pendingPreWakeContext}"`);
+  }
 
   // ── Pre-flight: seed goals from memory if none saved ───────────────────────
   if (!hasGoals()) {
