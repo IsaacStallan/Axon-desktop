@@ -75,6 +75,16 @@ async function transcribeBuffer(pcm: Buffer): Promise<string> {
   }
 }
 
+// ── File-based transcription ──────────────────────────────────────────────────
+
+async function transcribeFile(filePath: string): Promise<string> {
+  const response = await client.audio.transcriptions.create({
+    file:  fs.createReadStream(filePath),
+    model: 'whisper-1',
+  });
+  return response.text.trim();
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -177,6 +187,127 @@ function transcribeViaWhisper(durationSecs: number): Promise<string> {
     sox.on('error', (err) => {
       clearTimers();
       console.warn('[Whisper] SoX spawn error:', err.message);
+      doResolve('');
+    });
+  });
+}
+
+// ── Silence-based recording + transcription ───────────────────────────────────
+
+/**
+ * Records until the user stops speaking (silence detection via SoX), then
+ * transcribes via Whisper. Replaces fixed-duration recording for conversation
+ * turns so long explanations are never cut off mid-sentence.
+ */
+export async function recordUntilSilence(params: {
+  maxDuration?:      number;   // absolute max seconds (default 120)
+  silenceThreshold?: number;   // seconds of silence before stopping (default 1.8)
+  initialTimeout?:   number;   // seconds to wait for speech to start (default 8)
+}): Promise<string> {
+  const {
+    maxDuration      = 120,
+    silenceThreshold = 1.8,
+    initialTimeout   = 8,
+  } = params;
+
+  // Fast path: voiceListener may have already captured the post-wake utterance
+  const pending = popPendingUtterance();
+  if (pending) {
+    console.log('[Whisper] using queued post-wake utterance:', pending);
+    return pending;
+  }
+
+  const tempFile = path.join(os.tmpdir(), `axon_recording_${Date.now()}.wav`);
+
+  console.log(`[Whisper] listening... (silence detection active, max ${maxDuration}s)`);
+
+  return new Promise((resolve) => {
+    const inputArgs = process.platform === 'win32'
+      ? ['-t', 'waveaudio', 'default']
+      : ['-d'];
+
+    const soxArgs = [
+      ...inputArgs,
+      '-t', 'wav',
+      tempFile,
+      'silence',
+      '1', '0.1', '1%',
+      '1', String(silenceThreshold), '1%',
+    ];
+
+    const sox = spawn(SOX_PATH, soxArgs, { shell: false });
+    currentSoxPid = sox.pid;
+
+    let speechStarted = false;
+    let settled       = false;
+
+    function doResolve(value: string): void {
+      if (!settled) {
+        settled = true;
+        if (currentSoxPid === sox.pid) currentSoxPid = undefined;
+        resolve(value);
+      }
+    }
+
+    const forceStopTimer = setTimeout(() => {
+      console.log(`[Whisper] max duration ${maxDuration}s reached — stopping`);
+      if (currentSoxPid === sox.pid) killCurrentRecording();
+    }, maxDuration * 1000);
+
+    const initialTimeoutTimer = setTimeout(() => {
+      if (!speechStarted) {
+        console.log(`[Whisper] no speech detected in ${initialTimeout}s — stopping`);
+        if (currentSoxPid === sox.pid) killCurrentRecording();
+      }
+    }, initialTimeout * 1000);
+
+    function clearTimers(): void {
+      clearTimeout(forceStopTimer);
+      clearTimeout(initialTimeoutTimer);
+    }
+
+    sox.stderr?.on('data', (data: Buffer) => {
+      const output = data.toString();
+      if (output.includes('In:') && !speechStarted) {
+        speechStarted = true;
+        clearTimeout(initialTimeoutTimer);
+        console.log('[Whisper] speech detected — listening...');
+      }
+    });
+
+    sox.on('close', async (code) => {
+      clearTimers();
+      if (currentSoxPid === sox.pid) currentSoxPid = undefined;
+
+      console.log(`[Whisper] recording stopped (code ${code})`);
+
+      if (!fs.existsSync(tempFile)) {
+        doResolve('');
+        return;
+      }
+
+      const stats = fs.statSync(tempFile);
+      if (stats.size < 1000) {
+        try { fs.unlinkSync(tempFile); } catch { /* ignore */ }
+        doResolve('');
+        return;
+      }
+
+      try {
+        const transcript = await transcribeFile(tempFile);
+        console.log('[Whisper] transcript:', transcript);
+        try { fs.unlinkSync(tempFile); } catch { /* ignore */ }
+        doResolve(transcript);
+      } catch (err) {
+        console.warn('[Whisper] transcription failed:', err);
+        try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch { /* ignore */ }
+        doResolve('');
+      }
+    });
+
+    sox.on('error', (err) => {
+      clearTimers();
+      console.warn('[Whisper] SoX spawn error (recordUntilSilence):', err.message);
       doResolve('');
     });
   });

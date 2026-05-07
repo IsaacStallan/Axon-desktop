@@ -4,7 +4,7 @@ import fs   from 'fs';
 import path from 'path';
 import { speak, isSpeaking, interruptSpeech, speakStreaming, waitForSpeakQueue, resetSpeakQueue } from './elevenLabsService';
 import { getActivitySummary, getCurrentApp, getProductivityScore } from './windowMonitor';
-import { transcribe } from './whisperService';
+import { transcribe, recordUntilSilence } from './whisperService';
 import {
   saveExchange,
   getRecentConversations,
@@ -981,9 +981,10 @@ export async function triggerConversation(): Promise<void> {
 
   console.log('[Conversation] loop started');
 
-  // First turn listens for the full 30 s (user hasn't spoken yet).
-  // Subsequent turns use a window derived from Axon's last response type.
-  let nextListenSecs = 30;
+  // nextListenSecs is kept only as a closing signal (0 = closing response).
+  // Actual recording duration is driven by silence detection, not a fixed window.
+  let nextListenSecs = 1;
+  let firstListen    = true;
 
   while (conversationActive) {
     // Closing response → return to idle without listening for more input
@@ -994,7 +995,7 @@ export async function triggerConversation(): Promise<void> {
 
       if (lingerTranscript.trim() && !isJunk(lingerTranscript) && !isEcho(lingerTranscript)) {
         console.log('[Conversation] linger follow-up detected, resuming:', lingerTranscript);
-        nextListenSecs = 20;
+        nextListenSecs = 1;
         // process it on next loop iteration
         history.push({ role: 'user', content: lingerTranscript });
       } else {
@@ -1003,9 +1004,17 @@ export async function triggerConversation(): Promise<void> {
       }
     }
 
+    // First listen after wake word is always full mode.
+    // Quick mode (short silence threshold) only when Axon asked a direct question.
+    const currentResponseType = lastResponseType as ResponseType;
+    const useQuickMode  = !firstListen && currentResponseType === 'question';
+    const silenceParams = useQuickMode
+      ? { maxDuration: 30,  silenceThreshold: 1.2, initialTimeout: 5 }
+      : { maxDuration: 120, silenceThreshold: 2.0, initialTimeout: 8 };
+
     orbWin?.webContents.send('orb:state', 'listening');
-    console.log(`[Conversation] listening (${nextListenSecs}s window)...`);
-    const transcript = await transcribeWithTimeout(nextListenSecs);
+    console.log(`[Conversation] listening (silence detection, ${useQuickMode ? 'quick' : 'full'} mode)...`);
+    const transcript = await recordUntilSilence(silenceParams);
     console.log('[Conversation] transcript:', transcript);
 
     if (!conversationActive) break;
@@ -1067,6 +1076,7 @@ export async function triggerConversation(): Promise<void> {
       }
 
       setLastResponseType(respType);
+      firstListen    = false;
       nextListenSecs = getListenWindowSecs();
       console.log(`[Conversation] response type: ${respType} → next listen: ${nextListenSecs}s`);
      
