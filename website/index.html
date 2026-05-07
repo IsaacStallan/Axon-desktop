@@ -411,7 +411,7 @@
       .pricing-grid { grid-template-columns: repeat(2,1fr); }
     }
     @media (max-width: 900px) {
-      .hero-inner { grid-template-columns: 1fr; gap: 48px; text-align: center; }
+      .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
       .hero-left { justify-content: center; }
       #hero h1 { font-size: 48px; }
       .hero-btns { justify-content: center; }
@@ -429,11 +429,30 @@
       footer { flex-direction: column; align-items: center; text-align: center; }
       .footer-left { align-items: center; }
       .footer-right { align-items: center; }
+      .footer-links { flex-wrap: wrap; justify-content: center; gap: 16px; }
+    }
+    @media (max-width: 600px) {
+      /* Hide nav privacy link — saves space, still in footer */
+      nav > div > a[href="privacy.html"] { display: none; }
+      .hero-sub { font-size: 16px; }
+      .section-title { font-size: 30px; }
+      .how-card { padding: 36px 28px; }
+      .nav-cta { padding: 9px 16px; font-size: 10px; letter-spacing: 1.5px; }
     }
     @media (max-width: 480px) {
-      #hero h1 { font-size: 36px; }
-      .hero-btns { flex-direction: column; align-items: center; }
+      #hero { padding: 72px 20px 56px; }
+      #hero h1 { font-size: 28px; line-height: 1.2; }
+      .hero-sub { font-size: 15px; margin-bottom: 32px; }
+      .hero-btns { flex-direction: column; align-items: stretch; gap: 12px; }
+      .btn-cta, .btn-outline { width: 100%; text-align: center; padding: 16px 24px; }
       .cap-grid { grid-template-columns: 1fr; }
+      .cap-item { padding: 20px 20px; }
+      .section-title { font-size: 24px; }
+      .section-wrap { padding: 60px 20px; }
+      .how-card { padding: 28px 20px; }
+      .price-card { padding: 28px 20px; }
+      .download-btn { width: 100%; padding: 18px 24px; display: block; }
+      #download .section-wrap { padding: 60px 20px; }
     }
   </style>
 </head>
@@ -812,8 +831,9 @@
 
     function resize(){
       dpr = window.devicePixelRatio||1;
-      canvas.style.width = canvas.style.height = '400px';
-      canvas.width = canvas.height = 400*dpr;
+      const sz = Math.min(400, window.innerWidth - 48);
+      canvas.style.width = canvas.style.height = sz + 'px';
+      canvas.width = canvas.height = sz * dpr;
     }
     resize();
     window.addEventListener('resize', resize);
@@ -829,7 +849,7 @@
     }
 
     function draw(){
-      const sz = 400;
+      const sz = canvas.width / dpr;
       ctx.resetTransform(); ctx.scale(dpr,dpr);
       ctx.clearRect(0,0,sz,sz);
       const CX=sz/2, CY=sz/2;
