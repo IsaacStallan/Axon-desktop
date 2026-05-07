@@ -189,6 +189,61 @@ function extractCode(text: string): string {
   return text.trim();
 }
 
+// ── Content writing helpers ────────────────────────────────────────────────────
+
+function isContentWritingTask(description: string): boolean {
+  const contentKeywords = [
+    'write', 'create a document', 'write a script', 'draft',
+    'create a report', 'write a story', 'generate content',
+    'write a plan', 'create a one-pager', 'write an email',
+  ];
+  const codeKeywords = [
+    'implement', 'fix', 'debug', 'code', 'function', 'class',
+    'api', 'database', 'algorithm', 'parse', 'compile',
+  ];
+
+  const lowerDesc = description.toLowerCase();
+  const hasContentKeyword = contentKeywords.some(k => lowerDesc.includes(k));
+  const hasCodeKeyword    = codeKeywords.some(k => lowerDesc.includes(k));
+
+  return hasContentKeyword && !hasCodeKeyword;
+}
+
+async function callHaiku(prompt: string): Promise<string> {
+  const resp = await client.messages.create({
+    model:      'claude-haiku-4-5-20251001',
+    max_tokens: 4000,
+    messages:   [{ role: 'user', content: prompt }],
+  });
+  const block = resp.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+  return block?.text.trim() ?? '';
+}
+
+async function handleContentTask(description: string, outputFile: string): Promise<CodingResult> {
+  console.log('[CodingAgent] content task detected — using direct generation');
+
+  const response = await callHaiku(
+    `${description}\n\nWrite the complete content now. Be thorough and detailed.\nOutput ONLY the content itself — no preamble, no explanation.`,
+  );
+
+  const resolved = path.resolve(outputFile);
+  const dir      = path.dirname(resolved);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(resolved, response, 'utf8');
+  console.log(`[CodingAgent] content written to ${resolved}`);
+
+  sendUpdate('✓ Coding agent — content written', 'completed');
+  await speak(`Done — content written to ${path.basename(outputFile)}.`).catch(() => {});
+
+  return {
+    success:  true,
+    code:     response,
+    output:   `Content written to ${resolved}`,
+    attempts: 1,
+    savedTo:  resolved,
+  };
+}
+
 // ── Planning call — returns language + code ────────────────────────────────────
 
 interface Plan { language: Language; code: string }
@@ -210,7 +265,13 @@ async function planCode(task: CodingTask): Promise<Plan> {
         `\n${langHint}\n\n` +
         `Reply with ONLY the code. No explanation, no markdown prose outside the code block.\n` +
         `Start with the language on line 1 as a comment: # language: python  OR  // language: typescript\n` +
-        `Then the complete, runnable code.`,
+        `Then the complete, runnable code.\n\n` +
+        `CRITICAL: If you need to write any text content to a file, use base64 encoding to avoid string escaping issues:\n\n` +
+        `import base64\n` +
+        `content = base64.b64decode("BASE64_ENCODED_CONTENT").decode('utf-8')\n` +
+        `with open('output.md', 'w') as f:\n` +
+        `    f.write(content)\n\n` +
+        `Never use multi-line strings with triple quotes for content that contains apostrophes, quotes, or special characters.`,
     }],
   });
 
@@ -258,6 +319,10 @@ async function fixCode(
 
 export async function runCodingLoop(task: CodingTask): Promise<CodingResult> {
   console.log(`[CodingAgent] task: ${task.description.slice(0, 80)}`);
+
+  if (isContentWritingTask(task.description) && task.outputFile) {
+    return handleContentTask(task.description, task.outputFile);
+  }
 
   const MAX_ATTEMPTS = 5;
   const timestamp    = Date.now();
