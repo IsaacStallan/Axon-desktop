@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Axon — The AI that makes you more of yourself</title>
+  <meta property="og:title" content="Axon by Aretica — AI that actually keeps you on track">
+  <meta property="og:description" content="Axon watches how you work, learns your patterns, and intervenes before you lose the afternoon. No willpower required.">
+  <meta property="og:url" content="https://axon-aretica.pages.dev">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Axon by Aretica">
+  <meta name="twitter:description" content="AI that actually keeps you on track.">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -434,12 +441,27 @@
 
   <canvas id="starfield"></canvas>
 
+  <!-- Announcement banner -->
+  <div style="
+    background: #00D4FF15;
+    border-bottom: 1px solid #00D4FF30;
+    text-align: center;
+    padding: 10px 20px;
+    font-size: 0.85rem;
+    color: #00D4FF;
+    font-family: Georgia, serif;
+    letter-spacing: 0.05em;
+    position: relative; z-index: 101;
+  ">
+    Axon is in private beta — <a href="waitlist.html" style="color: #00D4FF; text-decoration: underline;">join the waitlist</a> to get early access
+  </div>
+
   <!-- Nav -->
   <nav>
     <div class="wordmark">ARETICA</div>
     <div style="display:flex;align-items:center;gap:28px;">
-      <a href="privacy.html" style="font-size:12px;color:rgba(232,237,242,0.3);letter-spacing:0.5px;transition:color 0.2s;" onmouseover="this.style.color='#00D4FF'" onmouseout="this.style.color='rgba(232,237,242,0.3)'">Privacy</a>
-      <a href="#download"><button class="nav-cta">Download</button></a>
+      <a href="privacy.html" style="opacity: 0.5; font-size: 0.85rem;">Privacy</a>
+      <a href="waitlist.html"><button class="nav-cta">Get Early Access</button></a>
     </div>
   </nav>
 
@@ -454,7 +476,7 @@
         <h1 class="reveal d1">You know what you should be doing right now.<br>So why aren't you doing it?</h1>
         <p class="hero-sub reveal d2">Axon watches how you actually work — not how you think you work. It sees the patterns you can't. And it stops you before you lose the afternoon.</p>
         <div class="hero-btns reveal d3">
-          <a href="#download"><button class="btn-cta">Download for Mac — Free</button></a>
+          <a href="waitlist.html"><button class="btn-cta">Get Early Access</button></a>
           <a href="#how"><button class="btn-outline">See how it works</button></a>
         </div>
         <p class="hero-fine reveal d3">No willpower required. No configuration. Axon figures you out.</p>
@@ -637,7 +659,7 @@
           <div class="price-desc">Axon starts learning your patterns. See what it notices about you.</div>
           <div class="price-amount">$0</div>
           <div class="price-sub">Forever free</div>
-          <a href="#download"><button class="price-cta">Download Free</button></a>
+          <a href="waitlist.html"><button class="price-cta">Join Waitlist</button></a>
           <p class="price-note">No credit card required</p>
           <ul class="price-features">
             <li>3 interventions per day</li>
@@ -657,7 +679,7 @@
             <span class="bill-monthly">Billed monthly</span>
             <span class="bill-yearly" style="display:none">Billed yearly — save ~20%</span>
           </div>
-          <button class="price-cta">Start 7-day free trial</button>
+          <a href="waitlist.html"><button class="price-cta">Join Waitlist</button></a>
           <p class="price-note">&nbsp;</p>
           <ul class="price-features">
             <li>Unlimited interventions</li>
@@ -678,7 +700,7 @@
             <span class="bill-monthly">Billed monthly</span>
             <span class="bill-yearly" style="display:none">Billed yearly — save ~20%</span>
           </div>
-          <button class="price-cta">Start 7-day free trial</button>
+          <a href="waitlist.html"><button class="price-cta">Join Waitlist</button></a>
           <p class="price-note">&nbsp;</p>
           <ul class="price-features">
             <li>Everything in Core</li>
@@ -700,7 +722,7 @@
           <div class="price-desc">Axon for your whole team. Everyone performs. No one drifts.</div>
           <div class="price-amount" style="font-size:28px;padding-top:10px;">$149<span style="font-size:14px;">/mo</span></div>
           <div class="price-sub">5 seats included</div>
-          <button class="price-cta">Contact us</button>
+          <a href="waitlist.html"><button class="price-cta">Join Waitlist</button></a>
           <p class="price-note">&nbsp;</p>
           <ul class="price-features">
             <li>Everything in Pro</li>
@@ -722,8 +744,8 @@
       <div class="section-label reveal">Download</div>
       <div class="section-title reveal d1">Stop losing afternoons.</div>
       <p class="hero-sub reveal d2" style="text-align:center;margin:0 auto 32px;">Axon gets more accurate every day it watches you.<br>The earlier you start, the better it knows you.</p>
-      <a href="#"><button class="download-btn reveal d2">Download for Mac — Free</button></a>
-      <p class="download-note reveal d3">7-day free trial. No credit card. Cancel anytime.</p>
+      <a href="waitlist.html"><button class="download-btn reveal d2">Join the Waitlist</button></a>
+      <p class="download-note reveal d3">Limited beta access. We'll reach out when your spot is ready.</p>
       <p class="download-meta reveal d4">macOS 12 or later &nbsp;·&nbsp; Apple Silicon + Intel</p>
       <p class="built-by reveal d4">Built by Aretica</p>
     </div>
@@ -739,6 +761,8 @@
       <div class="footer-links">
         <a href="privacy.html">Privacy</a>
         <a href="#">Terms</a>
+        <span style="opacity: 0.3;">·</span>
+        <a href="waitlist.html">Join Waitlist</a>
       </div>
       <div class="footer-copy">© 2026 Aretica. All rights reserved.</div>
     </div>

@@ -352,6 +352,7 @@
       <!-- Form -->
       <div class="anim-form" id="form-wrap">
         <form id="waitlist-form" action="https://formspree.io/f/mlgawzeg" method="POST">
+          <input type="hidden" name="_subject" value="New Axon Waitlist Signup">
           <div class="field">
             <label for="fname">First name</label>
             <input type="text" id="fname" name="first_name" placeholder="Your first name" required autocomplete="given-name" />
@@ -365,7 +366,7 @@
             <textarea id="question" name="question" rows="3" placeholder="Be honest. That's the point." required></textarea>
           </div>
           <div class="submit-wrap">
-            <button type="submit" id="submit-btn">Apply for access</button>
+            <button type="submit" id="submit-btn">Join the Waitlist</button>
             <p class="submit-note">We read every application. You'll hear back within 24 hours.</p>
             <p class="error-msg" id="error-msg">Something went wrong. Email us at <a href="mailto:hello@aretica.ai" style="color:#ff6b6b;">hello@aretica.ai</a></p>
           </div>
@@ -375,7 +376,7 @@
       <!-- Success state -->
       <div id="success-state">
         <div class="success-headline">You're on the list.</div>
-        <p class="success-sub">We'll be in touch within 24 hours. In the meantime — notice the next time you drift.</p>
+        <p class="success-sub">We'll reach out personally when your spot is ready. In the meantime — <a href="https://www.linkedin.com/company/aretica" target="_blank" rel="noopener" style="color: var(--primary); opacity: 0.8;">follow the build on LinkedIn</a>.</p>
       </div>
 
     </div>
@@ -581,7 +582,7 @@
       } catch(err){
         errorMsg.classList.add('visible');
         submitBtn.disabled    = false;
-        submitBtn.textContent = 'Apply for access';
+        submitBtn.textContent = 'Join the Waitlist';
       }
     });
   })();
