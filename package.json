@@ -1,6 +1,6 @@
 {
   "name": "axon-desktop",
-  "version": "1.0.0",
+  "version": "1.0.0-beta",
   "description": "Axon — ambient AI presence for Windows",
   "main": ".webpack/main",
   "scripts": {
