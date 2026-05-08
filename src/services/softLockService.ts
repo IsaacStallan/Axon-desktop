@@ -100,6 +100,13 @@ async function restoreWindows(): Promise<void> {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function activateSoftLock(reason: string, durationMinutes: number): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const tierService = require('./tierService');
+  if (!tierService.isFeatureEnabled('softLockEnabled')) {
+    console.log('[SoftLock] disabled — requires Pro tier');
+    return;
+  }
+
   if (lockState?.active) {
     console.log('[SoftLock] already active — ignoring duplicate activate');
     return;

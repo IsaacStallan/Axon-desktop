@@ -352,6 +352,13 @@ export function runSilentTask(config: {
   model:      'groq' | 'haiku' | 'sonnet';
   onComplete: (result: string) => void;
 }): void {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const tierService = require('./tierService');
+  if (!tierService.isFeatureEnabled('subAgentsEnabled')) {
+    config.onComplete('Sub-agents require Pro. Upgrade at aretica.ai.');
+    return;
+  }
+
   const model = config.model === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
 
   void (async () => {

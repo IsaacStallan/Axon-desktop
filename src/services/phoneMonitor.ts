@@ -53,6 +53,12 @@ export async function isOnPhoneDistraction(): Promise<{
   app:         string | null;
   minutesAgo:  number | null;
 }> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const tierService = require('./tierService');
+  if (!tierService.isFeatureEnabled('phoneMonitoringEnabled')) {
+    return { confirmed: false, app: null, minutesAgo: null };
+  }
+
   // MDM check-in is the highest-confidence phone presence signal (AXON_CORE_MODE only)
   if (process.env.AXON_CORE_MODE === 'true' && mdmPhoneActive()) {
     return { confirmed: true, app: 'iPhone (MDM)', minutesAgo: Math.round(getPhoneIdleMinutes()) };

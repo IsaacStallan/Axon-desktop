@@ -59,6 +59,7 @@ const { getAllDeviceStatuses } = require('./services/deviceCoordinator');
 const { getClient: getSupabaseClient } = require('./services/cloudSync');
 const { pullCollectiveInsights, logCollectiveSetupSQL } = require('./services/collectiveIntelligence');
 const { startMDMServer } = require('./services/mdmServer');
+const { initTierService, getTier: getTierFromService } = require('./services/tierService');
 console.error('[Main] all imports done');
 
 // ── Global error handlers ─────────────────────────────────────────────────────
@@ -624,6 +625,9 @@ function startFullAxon(): void {
       },
     );
 
+    void (initTierService as () => Promise<void>)().then(() => {
+      console.log(`[Main] user tier: ${(getTierFromService as () => string)()}`);
+    });
     void (prewarmElevenLabs as () => Promise<void>)();
     startWindowMonitor();
     void verifySupabaseTables();

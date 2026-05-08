@@ -349,6 +349,12 @@ export function getLastChangeScore(): number {
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 export function startScreenObserver(): void {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const tierService = require('./tierService');
+  if (!tierService.isFeatureEnabled('screenAwarenessEnabled')) {
+    console.log('[ScreenObserver] disabled — requires Pro tier');
+    return;
+  }
   screenEvents.on('screen:changed', (ctx: ScreenContext) => {
     onScreenChanged(ctx);
   });

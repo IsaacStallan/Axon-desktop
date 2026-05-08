@@ -29,6 +29,7 @@ import { recordTokens } from './costTracker';
 import { checkConversationLimit, startConversationTimer, stopConversationTimer } from './rateLimiter';
 import { isMuted } from './muteControl';
 import { getLearningProfile } from './collectiveIntelligence';
+import * as tierService from './tierService';
 
 
 
@@ -631,7 +632,7 @@ ${(() => {
 })()}${(() => {
   const r = getSessionContext('last_silent_task');
   return r ? `\nBACKGROUND TASK RESULT (completed silently while you were working):\n${r}\n` : '';
-})()}`;
+})()}${tierService.getTier() === 'free' ? `\n\nUSER TIER: Free (limited)\nDaily interventions remaining: ${tierService.getRemainingInterventions()}/3\nIf the user asks about a Pro/Core feature, tell them naturally: "That's a paid feature — you can upgrade at aretica.ai"\nNever be pushy about it. Just mention it once and move on.` : ''}`;
 }
 
 // ── Retry wrapper for 529 overloaded errors ───────────────────────────────────
@@ -675,6 +676,22 @@ function extractCompleteSentences(buffer: string): { sentences: string[]; remain
     }
   }
   return { sentences, remainder: buffer.slice(lastIndex) };
+}
+
+// ── Tier-gated tool execution ─────────────────────────────────────────────────
+
+async function executeToolGated(toolName: string, input: Record<string, string>): Promise<string> {
+  if (toolName === 'calendar_read' || toolName === 'schedule_block') {
+    if (!tierService.isFeatureEnabled('calendarEnabled')) {
+      return tierService.getUpgradePrompt('calendar');
+    }
+  }
+  if (toolName === 'email_read' || toolName === 'email_draft' || toolName === 'email_send' || toolName === 'draft_email') {
+    if (!tierService.isFeatureEnabled('emailEnabled')) {
+      return tierService.getUpgradePrompt('calendar');
+    }
+  }
+  return executeTool(toolName, input);
 }
 
 // ── Send to Claude (with tool-use support) ────────────────────────────────────
@@ -771,7 +788,7 @@ async function sendMessage(userText: string): Promise<string> {
       orbWin?.webContents.send('axon:activity', `Executing: ${toolUseBlocks.map(b => b.name).join(', ')}`);
       const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
         toolUseBlocks.map(async (block) => {
-          const result = await executeTool(block.name, block.input as Record<string, string>);
+          const result = await executeToolGated(block.name, block.input as Record<string, string>);
           console.log(`[Tool] ${block.name} → ${result}`);
           return { type: 'tool_result' as const, tool_use_id: block.id, content: result };
         }),
@@ -797,7 +814,7 @@ async function sendMessage(userText: string): Promise<string> {
         history.push({ role: 'assistant', content: toolResponse.content });
         const moreResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
           moreBlocks.map(async (block) => {
-            const result = await executeTool(block.name, block.input as Record<string, string>);
+            const result = await executeToolGated(block.name, block.input as Record<string, string>);
             console.log(`[Tool] ${block.name} → ${result}`);
             return { type: 'tool_result' as const, tool_use_id: block.id, content: result };
           }),

@@ -45,6 +45,7 @@ import * as phoneMonitor                from './phoneMonitor';
 import { getRelevantInsights, getLearningProfile } from './collectiveIntelligence';
 import { ARETICA_VISION }              from './areticaVision';
 import { routeAxonLocal }              from './modelRouter';
+import * as tierService                from './tierService';
 
 const AXON_CORE_MODE = process.env.AXON_CORE_MODE === 'true';
 
@@ -605,6 +606,12 @@ async function routeIntervention(
 async function executeSpeak(obs: ObservationState, decision: CognitiveDecision): Promise<void> {
   if (isSpeaking || isConversationActive()) return;
 
+  // Tier: daily intervention limit
+  if (!tierService.canIntervene()) {
+    console.log('[CognitiveEngine] daily intervention limit reached — watching silently');
+    return;
+  }
+
   // Track hourly speak count
   speaksThisHour++;
 
@@ -695,6 +702,13 @@ Bad interventions (never do these):
   const message = await routeIntervention(prompt, decision.interventionTier ?? 1, decision.modelTier);
   if (!message || message.trim().toUpperCase() === 'SKIP') return;
 
+  // Tier: voice gate — free tier gets text log only, no TTS
+  if (!tierService.canSpeak()) {
+    console.log('[CognitiveEngine] free tier — text-only intervention:', message);
+    tierService.recordIntervention();
+    return;
+  }
+
   if (!(await acquireSpeakerLock(60_000))) {
     console.log('[CognitiveEngine] speaker lock held — skipping');
     return;
@@ -708,6 +722,7 @@ Bad interventions (never do these):
 
     await speak(message);
     recordInterventionFired();
+    tierService.recordIntervention();
 
     // Fix 1 & Fix 6: update cooldown timestamp and daily budget
     lastProactiveSpeakAt = Date.now();
