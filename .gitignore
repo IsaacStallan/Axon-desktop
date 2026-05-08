@@ -8,3 +8,10 @@ out/
 !.dev.vars.example
 .env*
 !.env.example
+
+# Training / model artefacts
+training_data.jsonl
+axon_adapters/
+axon_model_fused/
+axon-fine-tuned.gguf
+/tmp/axon_*

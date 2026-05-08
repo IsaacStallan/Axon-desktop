@@ -3,37 +3,65 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 
 module.exports = {
   packagerConfig: {
-    asar: true,
-    icon: './src/assets/Axon',
     name: 'Axon',
+    executableName: 'Axon',
+    appBundleId: 'ai.aretica.axon',
+    appCategoryType: 'public.app-category.productivity',
+    icon: './src/assets/Axon',
+    appVersion: '1.0.0',
+    appCopyright: 'Copyright © 2026 Aretica',
+    osxSign: false,
+    asar: true,
     extendInfo: {
       NSMicrophoneUsageDescription: 'Axon needs microphone access to listen for your voice.',
       NSCalendarsUsageDescription:  'Axon needs calendar access to give you daily briefings and event reminders.',
     },
+    ignore: [
+      /node_modules\/\.cache/,
+      /\.git/,
+      /training_data/,
+      /axon-model/,
+      /scripts\/fine_tune/,
+      /\.env$/,
+      /\.env\..*/
+    ]
   },
   rebuildConfig: {},
+  makers: [
+    {
+      name: '@electron-forge/maker-dmg',
+      config: {
+        name: 'Axon',
+        title: 'Axon by Aretica',
+        background: './src/assets/dmg-background.png',
+        icon: './src/assets/Axon.icns',
+        iconSize: 80,
+        contents: [
+          { x: 192, y: 344, type: 'file', path: '' },
+          { x: 448, y: 344, type: 'link', path: '/Applications' }
+        ],
+        additionalDMGOptions: {
+          window: { size: { width: 640, height: 480 } }
+        }
+      }
+    },
+    {
+      name: '@electron-forge/maker-zip',
+      platforms: ['darwin']
+    }
+  ],
   publishers: [
     {
       name: '@electron-forge/publisher-github',
       config: {
         repository: {
           owner: 'IsaacStallan',
-          name:  'Axon-desktop',
+          name:  'Axon-desktop'
         },
-        prerelease: false,
-        draft:      false,
-      },
-    },
-  ],
-  makers: [
-    {
-      name: '@electron-forge/maker-squirrel',
-      config: {},
-    },
-    {
-      name: '@electron-forge/maker-zip',
-      platforms: ['darwin'],
-    },
+        prerelease: true,
+        draft: false
+      }
+    }
   ],
   plugins: [
     {
