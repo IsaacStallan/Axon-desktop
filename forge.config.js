@@ -36,13 +36,13 @@ module.exports = {
         background: './src/assets/dmg-background.png',
         icon: './src/assets/Axon.icns',
         iconSize: 80,
-        contents: (opts) => [
-          { x: 165, y: 240, type: 'file', path: opts.appPath },
-          { x: 495, y: 240, type: 'link', path: '/Applications' },
-        ],
-        additionalDMGOptions: {
-          window: { size: { width: 660, height: 400 } },
+        window: {
+          size: { width: 660, height: 400 },
         },
+        contents: (opts) => [
+          { x: 180, y: 220, type: 'file', path: opts.appPath },
+          { x: 480, y: 220, type: 'link', path: '/Applications' },
+        ],
       }
     },
     {
