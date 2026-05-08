@@ -32,6 +32,17 @@ module.exports = {
       name: '@electron-forge/maker-dmg',
       config: {
         name: 'Axon',
+        title: 'Axon by Aretica',
+        background: './src/assets/dmg-background.png',
+        icon: './src/assets/Axon.icns',
+        iconSize: 80,
+        contents: (opts) => [
+          { x: 165, y: 240, type: 'file', path: opts.appPath },
+          { x: 495, y: 240, type: 'link', path: '/Applications' },
+        ],
+        additionalDMGOptions: {
+          window: { size: { width: 660, height: 400 } },
+        },
       }
     },
     {
