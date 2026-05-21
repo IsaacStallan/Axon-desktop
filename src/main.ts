@@ -17,7 +17,33 @@ import { promisify } from 'util';
 import { existsSync, writeFileSync } from 'fs';
 import * as dotenv from 'dotenv';
 import { autoUpdater } from 'electron-updater';
-dotenv.config();
+
+// Load .env from multiple possible locations.
+// In development: project root. In production: next to the app executable.
+const envPaths = [
+  path.join(process.cwd(), '.env'),
+  path.join(app.getPath('exe'), '..', '.env'),
+  path.join(app.getPath('exe'), '..', '..', '.env'),
+  path.join(app.getPath('exe'), '..', '..', '..', '.env'),
+  path.join(app.getPath('userData'), '.env'),
+  path.join(__dirname, '.env'),
+  path.join(__dirname, '..', '.env'),
+  path.join(__dirname, '..', '..', '.env'),
+];
+
+let envLoaded = false;
+for (const envPath of envPaths) {
+  const result = dotenv.config({ path: envPath });
+  if (!result.error) {
+    console.log(`[Main] loaded .env from: ${envPath}`);
+    envLoaded = true;
+    break;
+  }
+}
+
+if (!envLoaded) {
+  console.log('[Main] no .env file found — using environment variables only');
+}
 
 // Fallback to Aretica shared keys when user hasn't configured their own.
 // Set ARETICA_* at build time to ship a zero-config distribution.
