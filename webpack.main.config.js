@@ -1,5 +1,4 @@
 const path = require('path');
-const webpack = require('webpack');
 
 module.exports = {
   entry: './src/main.ts',
@@ -22,13 +21,4 @@ module.exports = {
     playwright: 'commonjs playwright',
     'playwright-core': 'commonjs playwright-core',
   },
-  plugins: [
-    new webpack.DefinePlugin({
-      'process.env.ARETICA_ANTHROPIC_KEY':    JSON.stringify(process.env.ARETICA_ANTHROPIC_KEY    || ''),
-      'process.env.ARETICA_ELEVENLABS_KEY':   JSON.stringify(process.env.ARETICA_ELEVENLABS_KEY   || ''),
-      'process.env.ARETICA_ELEVENLABS_VOICE_ID': JSON.stringify(process.env.ARETICA_ELEVENLABS_VOICE_ID || ''),
-      'process.env.ARETICA_SUPABASE_URL':     JSON.stringify(process.env.ARETICA_SUPABASE_URL     || ''),
-      'process.env.ARETICA_SUPABASE_ANON_KEY': JSON.stringify(process.env.ARETICA_SUPABASE_ANON_KEY || ''),
-    }),
-  ],
 };

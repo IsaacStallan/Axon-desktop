@@ -30,7 +30,16 @@ module.exports = {
   hooks: {
     prePackage: async () => {
       const { execSync } = require('child_process');
-      execSync('node scripts/inject-env.js', { stdio: 'inherit' });
+      // Pass parent process.env explicitly so child inherits all keys (including ARETICA_*)
+      execSync('node scripts/inject-env.js', { stdio: 'inherit', env: process.env });
+
+      const fs = require('fs');
+      const content = fs.readFileSync('./src/buildConstants.ts', 'utf8');
+      if (content.includes("ARETICA_ANTHROPIC_KEY: ''")) {
+        console.warn('[forge] WARNING: buildConstants has empty ANTHROPIC key — check your .env');
+      } else {
+        console.log('[forge] buildConstants verified — keys present');
+      }
     },
   },
   rebuildConfig: {},

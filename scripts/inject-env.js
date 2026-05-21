@@ -4,11 +4,11 @@ const path = require('path');
 require('dotenv').config();
 
 const constants = {
-  ARETICA_ANTHROPIC_KEY:       process.env.ARETICA_ANTHROPIC_KEY       || '',
-  ARETICA_ELEVENLABS_KEY:      process.env.ARETICA_ELEVENLABS_KEY      || '',
-  ARETICA_ELEVENLABS_VOICE_ID: process.env.ARETICA_ELEVENLABS_VOICE_ID || '',
-  ARETICA_SUPABASE_URL:        process.env.ARETICA_SUPABASE_URL        || '',
-  ARETICA_SUPABASE_ANON_KEY:   process.env.ARETICA_SUPABASE_ANON_KEY   || '',
+  ARETICA_ANTHROPIC_KEY:       process.env.ARETICA_ANTHROPIC_KEY       || process.env.ANTHROPIC_API_KEY    || '',
+  ARETICA_ELEVENLABS_KEY:      process.env.ARETICA_ELEVENLABS_KEY      || process.env.ELEVENLABS_API_KEY   || '',
+  ARETICA_ELEVENLABS_VOICE_ID: process.env.ARETICA_ELEVENLABS_VOICE_ID || process.env.ELEVENLABS_VOICE_ID  || '',
+  ARETICA_SUPABASE_URL:        process.env.ARETICA_SUPABASE_URL        || process.env.SUPABASE_URL         || '',
+  ARETICA_SUPABASE_ANON_KEY:   process.env.ARETICA_SUPABASE_ANON_KEY   || process.env.SUPABASE_ANON_KEY    || '',
 };
 
 const output = `// AUTO-GENERATED — DO NOT EDIT
