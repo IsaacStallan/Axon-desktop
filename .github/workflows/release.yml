@@ -27,21 +27,17 @@ jobs:
 
       - name: Create .env for build
         run: |
-          cat > .env << 'EOF'
-ARETICA_ANTHROPIC_KEY=${{ secrets.ARETICA_ANTHROPIC_KEY }}
-ARETICA_ELEVENLABS_KEY=${{ secrets.ARETICA_ELEVENLABS_KEY }}
-ARETICA_ELEVENLABS_VOICE_ID=${{ secrets.ARETICA_ELEVENLABS_VOICE_ID }}
-ARETICA_SUPABASE_URL=${{ secrets.ARETICA_SUPABASE_URL }}
-ARETICA_SUPABASE_ANON_KEY=${{ secrets.ARETICA_SUPABASE_ANON_KEY }}
-NODE_ENV=production
-EOF
+          printf 'ARETICA_ANTHROPIC_KEY=%s\n' '${{ secrets.ARETICA_ANTHROPIC_KEY }}' >> .env
+          printf 'ARETICA_ELEVENLABS_KEY=%s\n' '${{ secrets.ARETICA_ELEVENLABS_KEY }}' >> .env
+          printf 'ARETICA_ELEVENLABS_VOICE_ID=%s\n' '${{ secrets.ARETICA_ELEVENLABS_VOICE_ID }}' >> .env
+          printf 'ARETICA_SUPABASE_URL=%s\n' '${{ secrets.ARETICA_SUPABASE_URL }}' >> .env
+          printf 'ARETICA_SUPABASE_ANON_KEY=%s\n' '${{ secrets.ARETICA_SUPABASE_ANON_KEY }}' >> .env
+          printf 'NODE_ENV=production\n' >> .env
 
       - name: Verify .env
         run: |
-          echo "Checking .env keys exist (not showing values):"
-          grep -c "ARETICA_ANTHROPIC_KEY" .env && echo "✓ ANTHROPIC key present" || echo "✗ ANTHROPIC key MISSING"
-          grep -c "ARETICA_SUPABASE_URL" .env && echo "✓ SUPABASE_URL present" || echo "✗ SUPABASE_URL MISSING"
-          grep -c "ARETICA_ELEVENLABS_KEY" .env && echo "✓ ELEVENLABS key present" || echo "✗ ELEVENLABS key MISSING"
+          grep -c "ARETICA_ANTHROPIC_KEY" .env && echo "ANTHROPIC key present" || echo "ANTHROPIC key MISSING"
+          grep -c "ARETICA_SUPABASE_URL" .env && echo "SUPABASE_URL present" || echo "SUPABASE_URL MISSING"
 
       - name: Build and publish
         env:
