@@ -1,4 +1,6 @@
-node_modules/ 
+node_modules/
+src/buildConstants.ts
+
 .webpack/ 
 out/ 
 
@@ -15,3 +17,4 @@ axon_adapters/
 axon_model_fused/
 axon-fine-tuned.gguf
 /tmp/axon_*
+.env

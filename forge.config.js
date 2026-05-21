@@ -27,6 +27,12 @@ module.exports = {
       /\.env\..*/
     ]
   },
+  hooks: {
+    prePackage: async () => {
+      const { execSync } = require('child_process');
+      execSync('node scripts/inject-env.js', { stdio: 'inherit' });
+    },
+  },
   rebuildConfig: {},
   makers: [
     {

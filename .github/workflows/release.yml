@@ -39,6 +39,9 @@ jobs:
           grep -c "ARETICA_ANTHROPIC_KEY" .env && echo "ANTHROPIC key present" || echo "ANTHROPIC key MISSING"
           grep -c "ARETICA_SUPABASE_URL" .env && echo "SUPABASE_URL present" || echo "SUPABASE_URL MISSING"
 
+      - name: Inject build constants
+        run: node scripts/inject-env.js
+
       - name: Build and publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -17,6 +17,7 @@ import { promisify } from 'util';
 import { existsSync, writeFileSync } from 'fs';
 import * as dotenv from 'dotenv';
 import { autoUpdater } from 'electron-updater';
+import { BUILD_CONSTANTS } from './buildConstants';
 
 // Load .env from multiple possible locations.
 // In development: project root. In production: next to the app executable.
@@ -52,6 +53,13 @@ if (!process.env.ELEVENLABS_API_KEY && process.env.ARETICA_ELEVENLABS_KEY)    pr
 if (!process.env.OPENAI_API_KEY     && process.env.ARETICA_OPENAI_KEY)        process.env.OPENAI_API_KEY     = process.env.ARETICA_OPENAI_KEY;
 if (!process.env.SUPABASE_URL       && process.env.ARETICA_SUPABASE_URL)      process.env.SUPABASE_URL       = process.env.ARETICA_SUPABASE_URL;
 if (!process.env.SUPABASE_ANON_KEY  && process.env.ARETICA_SUPABASE_ANON_KEY) process.env.SUPABASE_ANON_KEY  = process.env.ARETICA_SUPABASE_ANON_KEY;
+
+// Final fallback: build-time constants compiled in by scripts/inject-env.js
+if (!process.env.ANTHROPIC_API_KEY  && BUILD_CONSTANTS.ARETICA_ANTHROPIC_KEY)       process.env.ANTHROPIC_API_KEY  = BUILD_CONSTANTS.ARETICA_ANTHROPIC_KEY;
+if (!process.env.ELEVENLABS_API_KEY && BUILD_CONSTANTS.ARETICA_ELEVENLABS_KEY)      process.env.ELEVENLABS_API_KEY = BUILD_CONSTANTS.ARETICA_ELEVENLABS_KEY;
+if (!process.env.ELEVENLABS_VOICE_ID && BUILD_CONSTANTS.ARETICA_ELEVENLABS_VOICE_ID) process.env.ELEVENLABS_VOICE_ID = BUILD_CONSTANTS.ARETICA_ELEVENLABS_VOICE_ID;
+if (!process.env.SUPABASE_URL       && BUILD_CONSTANTS.ARETICA_SUPABASE_URL)        process.env.SUPABASE_URL       = BUILD_CONSTANTS.ARETICA_SUPABASE_URL;
+if (!process.env.SUPABASE_ANON_KEY  && BUILD_CONSTANTS.ARETICA_SUPABASE_ANON_KEY)   process.env.SUPABASE_ANON_KEY  = BUILD_CONSTANTS.ARETICA_SUPABASE_ANON_KEY;
 
 const execAsync = promisify(exec);
 

@@ -15,7 +15,10 @@
     "import-model": "bash scripts/import_model.sh",
     "setup-mdm": "bash scripts/setup_mdm.sh",
     "start-mdm-server": "ts-node --transpile-only src/services/mdmServer.ts",
-    "release": "bash scripts/release.sh"
+    "release": "bash scripts/release.sh",
+    "inject-env": "node scripts/inject-env.js",
+    "prebuild": "node scripts/inject-env.js",
+    "prepackage": "node scripts/inject-env.js"
   },
   "build": {
     "publish": {
