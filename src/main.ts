@@ -133,6 +133,16 @@ function createOrbWindow(): BrowserWindow {
     console.log('[Renderer]', message);
   });
 
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error('[Main] renderer failed to load:', errorCode, errorDescription);
+    const html = `<html style="background:#080c10;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2 style="color:#00D4FF">Axon failed to start</h2><p style="opacity:0.5">Error ${errorCode}: ${errorDescription}</p><p style="opacity:0.3;font-size:0.8rem">Please reinstall or contact support@aretica.ai</p></div></html>`;
+    void win.webContents.loadURL(`data:text/html,${encodeURIComponent(html)}`);
+  });
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[Main] renderer crashed:', details.reason);
+  });
+
   // Never actually close — just hide
   win.on('close', (e) => {
     e.preventDefault();
@@ -563,12 +573,47 @@ async function verifySupabaseTables(): Promise<void> {
   }
 }
 
+// ── Config validation ─────────────────────────────────────────────────────────
+
+function checkRequiredConfig(): boolean {
+  const required = [
+    'ANTHROPIC_API_KEY',
+    'ELEVENLABS_API_KEY',
+    'SUPABASE_URL',
+    'SUPABASE_ANON_KEY',
+  ];
+  const missing = required.filter(key => !process.env[key]);
+  if (missing.length > 0) {
+    console.error('[Main] missing required config:', missing);
+    return false;
+  }
+  return true;
+}
+
 // ── Full Axon startup ─────────────────────────────────────────────────────────
 // Called either directly from ready (if onboarding already done)
 // or from the onboarding:complete IPC handler.
 
 function startFullAxon(): void {
   try {
+    if (!checkRequiredConfig()) {
+      const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+      const errWin = new BrowserWindow({
+        width: 500, height: 300,
+        x: Math.round((width - 500) / 2),
+        y: Math.round((height - 300) / 2),
+        frame: false,
+        show: true,
+        webPreferences: { contextIsolation: true, nodeIntegration: false },
+      });
+      const missing = ['ANTHROPIC_API_KEY', 'ELEVENLABS_API_KEY', 'SUPABASE_URL', 'SUPABASE_ANON_KEY']
+        .filter(k => !process.env[k]).join(', ');
+      const html = `<html style="background:#080c10;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center;padding:24px"><h2 style="color:#00D4FF">Axon configuration error</h2><p style="opacity:0.7">Missing required config: ${missing}</p><p style="opacity:0.3;font-size:0.8rem">Add these to your .env file and restart. Contact support@aretica.ai for help.</p></div></html>`;
+      void errWin.webContents.loadURL(`data:text/html,${encodeURIComponent(html)}`);
+      if (!tray) tray = createTray();
+      return;
+    }
+
     console.log('[Main] creating orb window');
     orbWindow = createOrbWindow();
     setOrbWindow(orbWindow);
