@@ -273,24 +273,4 @@ function initOnboarding(): void {
   }
 
   console.log('[Onboarding] initialised successfully');
-
-  // ── Diagnostic: fixed-position visible marker ──────────────────────────────
-  const marker = document.createElement('div');
-  marker.textContent = 'DIAG';
-  marker.style.cssText = 'position:fixed;top:8px;right:8px;background:magenta;color:white;padding:4px 8px;z-index:99999;font-family:monospace;font-size:11px;';
-  document.body.appendChild(marker);
-
-  // ── Diagnostic: confirm inline styles took effect ──────────────────────────
-  setTimeout(() => {
-    const bodyBg = getComputedStyle(document.body).backgroundColor;
-    const s1     = document.getElementById('s1');
-    const s1Rect = s1?.getBoundingClientRect();
-    const s1Display = s1 ? getComputedStyle(s1).display : 'no-element';
-    console.log('[Diag] body bg:', bodyBg);
-    console.log('[Diag] body innerHTML length:', document.body.innerHTML.length);
-    console.log('[Diag] body children count:', document.body.children.length);
-    console.log('[Diag] s1 display:', s1Display);
-    console.log('[Diag] s1 rect:', s1Rect ? `${s1Rect.width}x${s1Rect.height} @ ${s1Rect.x},${s1Rect.y}` : 'missing');
-    console.log('[Diag] viewport:', `${window.innerWidth}x${window.innerHeight}`);
-  }, 500);
 }
