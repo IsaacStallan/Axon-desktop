@@ -487,6 +487,22 @@ function createOnboardingWindow(): BrowserWindow {
   });
 
   win.loadURL(ONBOARDING_WINDOW_WEBPACK_ENTRY);
+
+  win.webContents.on('did-finish-load', () => {
+    const bounds = win.getBounds();
+    console.log('[Onboarding] window bounds:', bounds);
+    console.log('[Onboarding] window visible:', win.isVisible());
+    console.log('[Onboarding] window focused:', win.isFocused());
+
+    void win.webContents.executeJavaScript(`
+      document.body.style.background = 'red';
+      document.body.innerHTML += '<h1 style="color:white;font-size:48px;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%)">AXON LOADED</h1>';
+      console.log('[Test] injected test content, body bg:', document.body.style.background);
+      console.log('[Test] body dimensions:', document.body.offsetWidth, 'x', document.body.offsetHeight);
+      console.log('[Test] screen1 display:', document.getElementById('screen-welcome')?.style.display, getComputedStyle(document.getElementById('screen-welcome') || document.body).display);
+    `);
+  });
+
   return win;
 }
 
