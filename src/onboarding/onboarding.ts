@@ -137,11 +137,25 @@ function initOnboarding(): void {
   let currentScreen = 1;
 
   function goTo(n: number): void {
-    document.getElementById(`s${currentScreen}`)?.classList.remove('active');
-    document.getElementById(`s${n}`)?.classList.add('active');
+    for (const i of [1, 2, 3, 4]) {
+      const el = document.getElementById(`s${i}`);
+      if (el) el.style.display = 'none';
+    }
+    const target = document.getElementById(`s${n}`);
+    if (target) {
+      target.style.display = 'flex';
+      target.style.flexDirection = 'column';
+      target.style.alignItems = 'center';
+      target.style.justifyContent = 'center';
+    }
     currentScreen = n;
     if (n === 3) setTimeout(startVoiceTest, 600);
-    if (n === 4) setTimeout(() => btnFinish?.classList.add('visible'), 800);
+    if (n === 4) setTimeout(() => {
+      if (btnFinish) {
+        btnFinish.style.opacity = '1';
+        btnFinish.style.pointerEvents = 'all';
+      }
+    }, 800);
   }
 
   // ── Screen 1: Welcome ──────────────────────────────────────────────────────
@@ -163,7 +177,10 @@ function initOnboarding(): void {
   if (!btnStart) {
     console.error('[Onboarding] #btn-start not found');
   } else {
-    setTimeout(() => { btnStart.classList.add('visible'); }, 2000);
+    setTimeout(() => {
+      btnStart.style.opacity = '1';
+      btnStart.style.pointerEvents = 'all';
+    }, 2000);
     btnStart.addEventListener('click', () => goTo(2));
   }
 
@@ -211,7 +228,11 @@ function initOnboarding(): void {
     await axonAPI('speak', "I'm Axon. Say hey Axon to wake me.");
     wave3State = 'idle';
     setTimeout(() => {
-      document.getElementById('btn-skip-voice')?.classList.add('visible');
+      const skip = document.getElementById('btn-skip-voice');
+      if (skip) {
+        skip.style.opacity = '1';
+        skip.style.pointerEvents = 'all';
+      }
     }, 400);
   }
 
