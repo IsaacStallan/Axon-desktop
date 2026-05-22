@@ -192,7 +192,18 @@ function createOrbWindow(): BrowserWindow {
     console.error('[Main] renderer crashed:', details.reason);
   });
 
-  win.on('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    win.show();
+    console.log('[Main] orb window shown via ready-to-show');
+  });
+
+  // Fallback — force show after 3 seconds if ready-to-show hasn't fired
+  setTimeout(() => {
+    if (win && !win.isDestroyed() && !win.isVisible()) {
+      console.log('[Main] ready-to-show never fired — force showing window');
+      win.show();
+    }
+  }, 3000);
 
   // Never actually close — just hide
   win.on('close', (e) => {
