@@ -542,6 +542,7 @@ ipcMain.handle('onboarding:complete', () => {
   }
   onboardingWindow?.destroy();
   onboardingWindow = null;
+  console.log('[Main] startFullAxon called from:', new Error().stack?.split('\n')[2]);
   startFullAxon();
 });
 
@@ -570,6 +571,7 @@ ipcMain.handle('complete-onboarding', () => {
   }
   onboardingWindow?.destroy();
   onboardingWindow = null;
+  console.log('[Main] startFullAxon called from:', new Error().stack?.split('\n')[2]);
   startFullAxon();
 });
 
@@ -913,6 +915,7 @@ app.on('ready', () => {
       return;
     }
 
+    console.log('[Main] startFullAxon called from:', new Error().stack?.split('\n')[2]);
     startFullAxon();
   } catch (err) {
     console.error('[Main] STARTUP ERROR in ready handler:', err);
