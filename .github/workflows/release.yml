@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Rebuild native modules
+        run: npx electron-rebuild 2>/dev/null || true
+
       - name: Create .env for build
         run: |
           printf 'ARETICA_ANTHROPIC_KEY=%s\n' '${{ secrets.ARETICA_ANTHROPIC_KEY }}' >> .env

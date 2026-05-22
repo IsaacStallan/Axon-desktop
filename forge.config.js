@@ -11,7 +11,7 @@ module.exports = {
     appVersion: '1.0.0',
     appCopyright: 'Copyright © 2026 Aretica',
     osxSign: false,
-    asar: true,
+    asar: { unpack: '**/*.node' },
     arch: 'universal',
     extendInfo: {
       NSMicrophoneUsageDescription: 'Axon needs microphone access to listen for your voice.',
@@ -24,7 +24,9 @@ module.exports = {
       /axon-model/,
       /scripts\/fine_tune/,
       /\.env$/,
-      /\.env\..*/
+      /\.env\..*/,
+      /^\/out\//,
+      /\.webpack\/renderer\/.*\.map$/,
     ]
   },
   hooks: {

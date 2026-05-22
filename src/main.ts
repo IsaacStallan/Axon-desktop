@@ -159,7 +159,6 @@ function createOrbWindow(): BrowserWindow {
     },
   });
 
-  win.loadURL(ORB_WINDOW_WEBPACK_ENTRY);
   win.setAlwaysOnTop(true, 'screen-saver');
 
   // Forward renderer console messages to main process stdout
@@ -167,8 +166,24 @@ function createOrbWindow(): BrowserWindow {
     console.log('[Renderer]', message);
   });
 
+  let loadAttempts = 0;
+  const maxAttempts = 3;
+  let showingErrorPage = false;
+
+  const attemptLoad = (): void => {
+    loadAttempts++;
+    win.loadURL(ORB_WINDOW_WEBPACK_ENTRY);
+  };
+
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    if (showingErrorPage) return;
     console.error('[Main] renderer failed to load:', errorCode, errorDescription);
+    if (loadAttempts < maxAttempts) {
+      console.log(`[Main] retrying renderer load (attempt ${loadAttempts + 1}/${maxAttempts})...`);
+      setTimeout(attemptLoad, 2000);
+      return;
+    }
+    showingErrorPage = true;
     const html = `<html style="background:#080c10;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2 style="color:#00D4FF">Axon failed to start</h2><p style="opacity:0.5">Error ${errorCode}: ${errorDescription}</p><p style="opacity:0.3;font-size:0.8rem">Please reinstall or contact support@aretica.ai</p></div></html>`;
     void win.webContents.loadURL(`data:text/html,${encodeURIComponent(html)}`);
   });
@@ -177,11 +192,15 @@ function createOrbWindow(): BrowserWindow {
     console.error('[Main] renderer crashed:', details.reason);
   });
 
+  win.on('ready-to-show', () => win.show());
+
   // Never actually close — just hide
   win.on('close', (e) => {
     e.preventDefault();
     win.hide();
   });
+
+  attemptLoad();
 
   return win;
 }
@@ -501,6 +520,38 @@ ipcMain.handle('onboarding:complete', () => {
   startFullAxon();
 });
 
+// ── electronAPI IPC handlers (new onboarding flow) ───────────────────────────
+
+ipcMain.handle('request-accessibility', () =>
+  systemPreferences.isTrustedAccessibilityClient(true),
+);
+
+ipcMain.handle('onboarding-speak', async (_e, text: string) => {
+  try {
+    await (elevenLabsSpeak as (t: string) => Promise<void>)(text);
+  } catch (e) {
+    console.warn('[Onboarding] TTS error:', e);
+  }
+});
+
+ipcMain.handle('complete-onboarding', () => {
+  try {
+    writeFileSync(
+      path.join(app.getPath('userData'), 'onboarding-complete.json'),
+      JSON.stringify({ completedAt: new Date().toISOString() }), 'utf8',
+    );
+  } catch (e) {
+    console.warn('[Onboarding] could not write completion marker:', e);
+  }
+  onboardingWindow?.destroy();
+  onboardingWindow = null;
+  startFullAxon();
+});
+
+export function notifyOnboardingWakeWord(): void {
+  onboardingWindow?.webContents.send('wake-word-detected');
+}
+
 // ── IPC: renderer signals ───────────────────────────────────────────────────
 ipcMain.on('axon:interrupt', () => {
   console.log('[Main] interrupt triggered via UI');
@@ -800,6 +851,8 @@ function startFullAxon(): void {
 app.on('ready', () => {
   try {
     console.log('[Main] app ready');
+    console.log('[Main] process.arch:', process.arch);
+    console.log('[Main] process.platform:', process.platform);
     app.dock?.hide();
     app.setLoginItemSettings({ openAtLogin: true });
 

@@ -2,9 +2,11 @@ export {};
 
 declare global {
   interface Window {
-    onboarding: {
-      speak:    (text: string) => Promise<void>;
-      complete: ()             => Promise<void>;
+    electronAPI: {
+      requestAccessibility: () => Promise<boolean>;
+      speak:               (text: string) => Promise<void>;
+      completeOnboarding:  () => Promise<void>;
+      onWakeWordDetected:  (callback: () => void) => void;
     };
   }
 }
@@ -17,9 +19,11 @@ function goTo(n: number): void {
   document.getElementById(`s${currentScreen}`)?.classList.remove('active');
   document.getElementById(`s${n}`)?.classList.add('active');
   currentScreen = n;
+  if (n === 3) setTimeout(startVoiceTest, 600);
+  if (n === 4) setTimeout(() => btnFinish.classList.add('visible'), 800);
 }
 
-// ── Waveform drawing (idle / speaking / listening) ────────────────────────────
+// ── Waveform drawing ──────────────────────────────────────────────────────────
 
 const N_BARS = 64;
 
@@ -42,13 +46,13 @@ function drawWave(
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, size, size);
 
-  const CX     = size / 2;
-  const CY     = size / 2;
-  const RI     = CX * 0.55;
-  const RMAX   = CX * 0.91;
-  const RING1  = CX * 0.955;
-  const RING2  = CX * 1.015;
-  const BAR_W  = Math.max(1.2, CX * 0.014);
+  const CX    = size / 2;
+  const CY    = size / 2;
+  const RI    = CX * 0.55;
+  const RMAX  = CX * 0.91;
+  const RING1 = CX * 0.955;
+  const RING2 = CX * 1.015;
+  const BAR_W = Math.max(1.2, CX * 0.014);
 
   const rotCW  =  frame * 0.005;
   const rotCCW = -frame * 0.007;
@@ -70,7 +74,7 @@ function drawWave(
     ctx.strokeStyle = `rgba(0,212,255,${alpha})`;
     ctx.lineWidth   = BAR_W;
     ctx.beginPath();
-    ctx.moveTo(CX + Math.cos(angle) * RI,          CY + Math.sin(angle) * RI);
+    ctx.moveTo(CX + Math.cos(angle) * RI,           CY + Math.sin(angle) * RI);
     ctx.lineTo(CX + Math.cos(angle) * (RI + barLen), CY + Math.sin(angle) * (RI + barLen));
     ctx.stroke();
   }
@@ -99,58 +103,79 @@ let   wave1Frame  = 0;
   requestAnimationFrame(animateWave1);
 })();
 
-// Button appears after 2 seconds
 const btnStart = document.getElementById('btn-start') as HTMLButtonElement;
 setTimeout(() => { btnStart.classList.add('visible'); }, 2000);
 btnStart.addEventListener('click', () => goTo(2));
 
-// ── Screen 2: Microphone ──────────────────────────────────────────────────────
+// ── Screen 2: Permissions ─────────────────────────────────────────────────────
 
-document.getElementById('btn-allow-mic')!.addEventListener('click', async () => {
+document.getElementById('btn-permissions')!.addEventListener('click', async () => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    // Permission granted — stop the test stream immediately (main orb will use its own)
     stream.getTracks().forEach(t => t.stop());
-    // Auto-advance after 1 second
-    setTimeout(() => {
-      goTo(3);
-      startDoneScreen();
-    }, 1000);
+    setTimeout(() => goTo(3), 1000);
   } catch {
-    // Denied — show fallback message and continue button
-    (document.getElementById('mic-denied')      as HTMLElement).style.display = 'block';
-    (document.getElementById('btn-mic-continue') as HTMLElement).style.display = 'inline-block';
-    (document.getElementById('btn-allow-mic')    as HTMLButtonElement).style.display = 'none';
+    (document.getElementById('perm-denied')!    as HTMLElement).style.display = 'block';
+    (document.getElementById('btn-perm-skip')!  as HTMLElement).style.display = 'inline-block';
+    (document.getElementById('btn-permissions')! as HTMLButtonElement).style.display = 'none';
   }
 });
 
-document.getElementById('btn-mic-continue')!.addEventListener('click', () => {
-  goTo(3);
-  startDoneScreen();
-});
+document.getElementById('btn-perm-skip')!.addEventListener('click', () => goTo(3));
 
-// ── Screen 3: Done ─────────────────────────────────────────────────────────────
+// ── Screen 3: Voice test ──────────────────────────────────────────────────────
 
-const waveDoneCanvas = document.getElementById('wave-done') as HTMLCanvasElement;
-const waveDoneEnergy = new Float32Array(N_BARS);
-let   waveDoneFrame  = 0;
-let   waveDoneState: 'idle' | 'speaking' = 'idle';
+const wave3Canvas = document.getElementById('wave3') as HTMLCanvasElement;
+const wave3Energy = new Float32Array(N_BARS);
+let   wave3Frame  = 0;
+let   wave3State: 'idle' | 'speaking' = 'idle';
 
-(function animateWaveDone() {
-  waveDoneFrame++;
-  tickEnergy(waveDoneEnergy, waveDoneFrame, waveDoneState);
-  if (currentScreen === 3) drawWave(waveDoneCanvas, waveDoneEnergy, waveDoneFrame, waveDoneState);
-  requestAnimationFrame(animateWaveDone);
+(function animateWave3() {
+  wave3Frame++;
+  tickEnergy(wave3Energy, wave3Frame, wave3State);
+  if (currentScreen === 3) drawWave(wave3Canvas, wave3Energy, wave3Frame, wave3State);
+  requestAnimationFrame(animateWave3);
 })();
 
-async function startDoneScreen(): Promise<void> {
-  waveDoneState = 'speaking';
+async function startVoiceTest(): Promise<void> {
+  wave3State = 'speaking';
   try {
-    await window.onboarding.speak("I'm Axon. I'll be watching. Let's get to work.");
-  } catch {
-    // TTS failed — proceed anyway
-  }
-  waveDoneState = 'idle';
-  // Complete onboarding and launch orb
-  await window.onboarding.complete();
+    await window.electronAPI.speak("I'm Axon. Say hey Axon to wake me.");
+  } catch { /* TTS optional */ }
+  wave3State = 'idle';
+  setTimeout(() => {
+    (document.getElementById('btn-skip-voice') as HTMLElement).classList.add('visible');
+  }, 400);
 }
+
+document.getElementById('btn-skip-voice')!.addEventListener('click', () => goTo(4));
+
+window.electronAPI.onWakeWordDetected(() => {
+  if (currentScreen === 3) goTo(4);
+});
+
+// ── Screen 4: Ready ───────────────────────────────────────────────────────────
+
+const wave4Canvas = document.getElementById('wave4') as HTMLCanvasElement;
+const wave4Energy = new Float32Array(N_BARS);
+let   wave4Frame  = 0;
+let   wave4State: 'idle' | 'speaking' = 'idle';
+
+(function animateWave4() {
+  wave4Frame++;
+  tickEnergy(wave4Energy, wave4Frame, wave4State);
+  if (currentScreen === 4) drawWave(wave4Canvas, wave4Energy, wave4Frame, wave4State);
+  requestAnimationFrame(animateWave4);
+})();
+
+const btnFinish = document.getElementById('btn-finish') as HTMLButtonElement;
+
+btnFinish.addEventListener('click', async () => {
+  btnFinish.disabled = true;
+  wave4State = 'speaking';
+  try {
+    await window.electronAPI.speak("Let's get to work.");
+  } catch { /* TTS optional */ }
+  wave4State = 'idle';
+  await window.electronAPI.completeOnboarding();
+});
