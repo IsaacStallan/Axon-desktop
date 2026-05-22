@@ -471,6 +471,20 @@ function createOnboardingWindow(): BrowserWindow {
       nodeIntegration:  false,
     },
   });
+  win.webContents.openDevTools({ mode: 'detach' });
+
+  win.webContents.on('console-message', (_event, _level, message, line, sourceId) => {
+    console.log(`[OnboardingRenderer] ${message} (${sourceId}:${line})`);
+  });
+
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error('[Onboarding] failed to load:', errorCode, errorDescription);
+  });
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[Onboarding] renderer crashed:', details.reason, details.exitCode);
+  });
+
   win.loadURL(ONBOARDING_WINDOW_WEBPACK_ENTRY);
   return win;
 }
