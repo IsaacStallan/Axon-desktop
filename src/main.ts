@@ -462,9 +462,10 @@ function createOnboardingWindow(): BrowserWindow {
     height:    600,
     x:         Math.round((width  - 800) / 2),
     y:         Math.round((height - 600) / 2),
-    frame:     false,
-    resizable: false,
-    show:      true,
+    frame:           false,
+    resizable:       false,
+    show:            true,
+    backgroundColor: '#080c10',
     webPreferences: {
       preload:          ONBOARDING_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
