@@ -11,19 +11,47 @@ declare global {
   }
 }
 
-// ── Screen navigation ─────────────────────────────────────────────────────────
+// ── Global error handler — catches crashes before DOMContentLoaded ────────────
+window.addEventListener('error', (e) => {
+  console.error('[Onboarding] JS error:', e.message, e.error);
+  document.body.innerHTML = `
+    <div style="background:#080c10;color:#fff;height:100vh;display:flex;
+                align-items:center;justify-content:center;flex-direction:column;
+                font-family:sans-serif;text-align:center;padding:40px">
+      <h2 style="color:#00D4FF;margin-bottom:16px">Starting Axon...</h2>
+      <p style="opacity:0.5">If this persists, restart the app.</p>
+      <p style="opacity:0.3;font-size:0.8rem;margin-top:8px">${e.message}</p>
+    </div>
+  `;
+});
 
-let currentScreen = 1;
-
-function goTo(n: number): void {
-  document.getElementById(`s${currentScreen}`)?.classList.remove('active');
-  document.getElementById(`s${n}`)?.classList.add('active');
-  currentScreen = n;
-  if (n === 3) setTimeout(startVoiceTest, 600);
-  if (n === 4) setTimeout(() => btnFinish?.classList.add('visible'), 800);
+// ── Safe electronAPI wrapper ──────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function axonAPI(method: string, ...args: any[]): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (window.electronAPI && typeof (window.electronAPI as any)[method] === 'function') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = (window.electronAPI as any)[method](...args) as Promise<void> | void;
+    return result ?? Promise.resolve();
+  }
+  console.warn('[Onboarding] electronAPI not ready or missing method:', method);
+  return Promise.resolve();
 }
 
-// ── Waveform drawing ──────────────────────────────────────────────────────────
+// ── Wait for preload injection with retry ─────────────────────────────────────
+function waitForElectronAPI(callback: () => void, retries = 10): void {
+  if (window.electronAPI) {
+    callback();
+  } else if (retries > 0) {
+    console.log('[Onboarding] waiting for electronAPI...', retries);
+    setTimeout(() => waitForElectronAPI(callback, retries - 1), 200);
+  } else {
+    console.error('[Onboarding] electronAPI never became available — proceeding without it');
+    callback();
+  }
+}
+
+// ── Waveform helpers (pure — no DOM dependency) ───────────────────────────────
 
 const N_BARS = 64;
 
@@ -95,127 +123,133 @@ function tickEnergy(energy: Float32Array, frame: number, state: 'idle' | 'speaki
   }
 }
 
-// ── Screen 1: Welcome ─────────────────────────────────────────────────────────
-
-const wave1Canvas = document.getElementById('wave1') as HTMLCanvasElement | null;
-const wave1Energy = new Float32Array(N_BARS);
-let   wave1Frame  = 0;
-
-if (!wave1Canvas) console.error('[Onboarding] canvas #wave1 not found');
-
-(function animateWave1() {
-  try {
-    wave1Frame++;
-    tickEnergy(wave1Energy, wave1Frame, 'idle');
-    if (currentScreen === 1) drawWave(wave1Canvas, wave1Energy, wave1Frame, 'idle');
-  } catch (err) {
-    console.error('[Onboarding] animateWave1 error:', err);
-  }
-  requestAnimationFrame(animateWave1);
-})();
-
-const btnStart = document.getElementById('btn-start') as HTMLButtonElement | null;
-if (!btnStart) {
-  console.error('[Onboarding] #btn-start not found');
-} else {
-  setTimeout(() => { btnStart.classList.add('visible'); }, 2000);
-  btnStart.addEventListener('click', () => goTo(2));
-}
-
-// ── Screen 2: Permissions ─────────────────────────────────────────────────────
-
-const btnPermissions = document.getElementById('btn-permissions') as HTMLButtonElement | null;
-if (!btnPermissions) {
-  console.error('[Onboarding] #btn-permissions not found');
-} else {
-  btnPermissions.addEventListener('click', async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      stream.getTracks().forEach(t => t.stop());
-      setTimeout(() => goTo(3), 1000);
-    } catch {
-      const denied  = document.getElementById('perm-denied');
-      const skip    = document.getElementById('btn-perm-skip');
-      if (denied)          denied.style.display        = 'block';
-      if (skip)            skip.style.display          = 'inline-block';
-      if (btnPermissions)  btnPermissions.style.display = 'none';
-    }
+// ── Entry point ───────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  waitForElectronAPI(() => {
+    console.log('[Onboarding] electronAPI ready — initialising');
+    initOnboarding();
   });
-}
-
-const btnPermSkip = document.getElementById('btn-perm-skip');
-if (btnPermSkip) btnPermSkip.addEventListener('click', () => goTo(3));
-
-// ── Screen 3: Voice test ──────────────────────────────────────────────────────
-
-const wave3Canvas = document.getElementById('wave3') as HTMLCanvasElement | null;
-const wave3Energy = new Float32Array(N_BARS);
-let   wave3Frame  = 0;
-let   wave3State: 'idle' | 'speaking' = 'idle';
-
-if (!wave3Canvas) console.error('[Onboarding] canvas #wave3 not found');
-
-(function animateWave3() {
-  try {
-    wave3Frame++;
-    tickEnergy(wave3Energy, wave3Frame, wave3State);
-    if (currentScreen === 3) drawWave(wave3Canvas, wave3Energy, wave3Frame, wave3State);
-  } catch (err) {
-    console.error('[Onboarding] animateWave3 error:', err);
-  }
-  requestAnimationFrame(animateWave3);
-})();
-
-async function startVoiceTest(): Promise<void> {
-  wave3State = 'speaking';
-  try {
-    await window.electronAPI.speak("I'm Axon. Say hey Axon to wake me.");
-  } catch { /* TTS optional */ }
-  wave3State = 'idle';
-  setTimeout(() => {
-    const btn = document.getElementById('btn-skip-voice');
-    if (btn) btn.classList.add('visible');
-  }, 400);
-}
-
-const btnSkipVoice = document.getElementById('btn-skip-voice');
-if (btnSkipVoice) btnSkipVoice.addEventListener('click', () => goTo(4));
-
-window.electronAPI.onWakeWordDetected(() => {
-  if (currentScreen === 3) goTo(4);
 });
 
-// ── Screen 4: Ready ───────────────────────────────────────────────────────────
+function initOnboarding(): void {
 
-const wave4Canvas = document.getElementById('wave4') as HTMLCanvasElement | null;
-const wave4Energy = new Float32Array(N_BARS);
-let   wave4Frame  = 0;
-let   wave4State: 'idle' | 'speaking' = 'idle';
+  // ── Screen navigation ──────────────────────────────────────────────────────
+  let currentScreen = 1;
 
-if (!wave4Canvas) console.error('[Onboarding] canvas #wave4 not found');
-
-(function animateWave4() {
-  try {
-    wave4Frame++;
-    tickEnergy(wave4Energy, wave4Frame, wave4State);
-    if (currentScreen === 4) drawWave(wave4Canvas, wave4Energy, wave4Frame, wave4State);
-  } catch (err) {
-    console.error('[Onboarding] animateWave4 error:', err);
+  function goTo(n: number): void {
+    document.getElementById(`s${currentScreen}`)?.classList.remove('active');
+    document.getElementById(`s${n}`)?.classList.add('active');
+    currentScreen = n;
+    if (n === 3) setTimeout(startVoiceTest, 600);
+    if (n === 4) setTimeout(() => btnFinish?.classList.add('visible'), 800);
   }
-  requestAnimationFrame(animateWave4);
-})();
 
-const btnFinish = document.getElementById('btn-finish') as HTMLButtonElement | null;
-if (!btnFinish) {
-  console.error('[Onboarding] #btn-finish not found');
-} else {
-  btnFinish.addEventListener('click', async () => {
-    btnFinish.disabled = true;
-    wave4State = 'speaking';
+  // ── Screen 1: Welcome ──────────────────────────────────────────────────────
+  const wave1Canvas = document.getElementById('wave1') as HTMLCanvasElement | null;
+  const wave1Energy = new Float32Array(N_BARS);
+  let   wave1Frame  = 0;
+  if (!wave1Canvas) console.error('[Onboarding] canvas #wave1 not found');
+
+  (function animateWave1() {
     try {
-      await window.electronAPI.speak("Let's get to work.");
-    } catch { /* TTS optional */ }
-    wave4State = 'idle';
-    await window.electronAPI.completeOnboarding();
+      wave1Frame++;
+      tickEnergy(wave1Energy, wave1Frame, 'idle');
+      if (currentScreen === 1) drawWave(wave1Canvas, wave1Energy, wave1Frame, 'idle');
+    } catch (err) { console.error('[Onboarding] animateWave1 error:', err); }
+    requestAnimationFrame(animateWave1);
+  })();
+
+  const btnStart = document.getElementById('btn-start') as HTMLButtonElement | null;
+  if (!btnStart) {
+    console.error('[Onboarding] #btn-start not found');
+  } else {
+    setTimeout(() => { btnStart.classList.add('visible'); }, 2000);
+    btnStart.addEventListener('click', () => goTo(2));
+  }
+
+  // ── Screen 2: Permissions ──────────────────────────────────────────────────
+  const btnPermissions = document.getElementById('btn-permissions') as HTMLButtonElement | null;
+  if (!btnPermissions) {
+    console.error('[Onboarding] #btn-permissions not found');
+  } else {
+    btnPermissions.addEventListener('click', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        stream.getTracks().forEach(t => t.stop());
+        setTimeout(() => goTo(3), 1000);
+      } catch {
+        const denied = document.getElementById('perm-denied');
+        const skip   = document.getElementById('btn-perm-skip');
+        if (denied)          denied.style.display          = 'block';
+        if (skip)            skip.style.display            = 'inline-block';
+        if (btnPermissions)  btnPermissions.style.display  = 'none';
+      }
+    });
+  }
+
+  const btnPermSkip = document.getElementById('btn-perm-skip');
+  if (btnPermSkip) btnPermSkip.addEventListener('click', () => goTo(3));
+
+  // ── Screen 3: Voice test ───────────────────────────────────────────────────
+  const wave3Canvas = document.getElementById('wave3') as HTMLCanvasElement | null;
+  const wave3Energy = new Float32Array(N_BARS);
+  let   wave3Frame  = 0;
+  let   wave3State: 'idle' | 'speaking' = 'idle';
+  if (!wave3Canvas) console.error('[Onboarding] canvas #wave3 not found');
+
+  (function animateWave3() {
+    try {
+      wave3Frame++;
+      tickEnergy(wave3Energy, wave3Frame, wave3State);
+      if (currentScreen === 3) drawWave(wave3Canvas, wave3Energy, wave3Frame, wave3State);
+    } catch (err) { console.error('[Onboarding] animateWave3 error:', err); }
+    requestAnimationFrame(animateWave3);
+  })();
+
+  async function startVoiceTest(): Promise<void> {
+    wave3State = 'speaking';
+    await axonAPI('speak', "I'm Axon. Say hey Axon to wake me.");
+    wave3State = 'idle';
+    setTimeout(() => {
+      document.getElementById('btn-skip-voice')?.classList.add('visible');
+    }, 400);
+  }
+
+  const btnSkipVoice = document.getElementById('btn-skip-voice');
+  if (btnSkipVoice) btnSkipVoice.addEventListener('click', () => goTo(4));
+
+  axonAPI('onWakeWordDetected', () => {
+    if (currentScreen === 3) goTo(4);
   });
+
+  // ── Screen 4: Ready ────────────────────────────────────────────────────────
+  const wave4Canvas = document.getElementById('wave4') as HTMLCanvasElement | null;
+  const wave4Energy = new Float32Array(N_BARS);
+  let   wave4Frame  = 0;
+  let   wave4State: 'idle' | 'speaking' = 'idle';
+  if (!wave4Canvas) console.error('[Onboarding] canvas #wave4 not found');
+
+  (function animateWave4() {
+    try {
+      wave4Frame++;
+      tickEnergy(wave4Energy, wave4Frame, wave4State);
+      if (currentScreen === 4) drawWave(wave4Canvas, wave4Energy, wave4Frame, wave4State);
+    } catch (err) { console.error('[Onboarding] animateWave4 error:', err); }
+    requestAnimationFrame(animateWave4);
+  })();
+
+  const btnFinish = document.getElementById('btn-finish') as HTMLButtonElement | null;
+  if (!btnFinish) {
+    console.error('[Onboarding] #btn-finish not found');
+  } else {
+    btnFinish.addEventListener('click', async () => {
+      btnFinish.disabled = true;
+      wave4State = 'speaking';
+      await axonAPI('speak', "Let's get to work.");
+      wave4State = 'idle';
+      await axonAPI('completeOnboarding');
+    });
+  }
+
+  console.log('[Onboarding] initialised successfully');
 }
