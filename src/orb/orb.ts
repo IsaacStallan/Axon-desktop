@@ -6,9 +6,9 @@ declare global {
     axon: {
       onStateChange:    (cb: (state: string) => void) => void;
       onMessage:        (cb: (msg: string) => void) => void;
-      onStatsUpdate:    (cb: (stats: AxonStats) => void) => void;
+      onStats:          (cb: (data: unknown) => void) => void;
+      onLog:            (cb: (data: unknown) => void) => void;
       onActivityUpdate: (cb: (activity: string) => void) => void;
-      onAgentsUpdate:   (cb: (agents: AgentStatus[]) => void) => void;
       tapOrb:           () => void;
       ready:            () => void;
       interruptAxon:    () => void;
@@ -26,36 +26,20 @@ declare global {
   }
 }
 
-interface AxonStats {
-  focusMin:   number;
-  driftMin:   number;
-  priorities: Array<{ text: string; impactScore: number; progress: number }>;
-  commitments: string[];
-  openApps:   Array<{ name: string; lastUsed: number; isActive: boolean }>;
-  performance?: {
-    peakFocusMins:  number;
-    flowStateCount: number;
-    deepWorkPct:    number;
-    streakDays:     number;
-  };
-  capacity: {
-    cognitiveCapacity: number;
-    lastBreakMins:     number;
-    screenTimeMins:    number;
-    followThrough:     number | null;
-    todayCost?:        number;
-    sessionCost?:      number;
-  };
-  capabilities?: {
-    gmailConnected:   boolean;
-    pcMonitorActive:  boolean;
-  };
+interface OrbStats {
+  focusMin:      number;
+  driftScore:    number;
+  streakDays:    number;
+  interventions: number;
+  activeGoal:    string;
+  currentApp:    string;
+  todayCost:     number;
 }
 
-interface AgentStatus {
-  id:          string;
-  description: string;
-  status:      'running' | 'completed' | 'failed';
+interface LogEntry {
+  time:    string;
+  type:    string;
+  message: string;
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -68,8 +52,9 @@ function updateClock(): void {
   const now = new Date();
   const h   = now.getHours().toString().padStart(2, '0');
   const m   = now.getMinutes().toString().padStart(2, '0');
+  const s   = now.getSeconds().toString().padStart(2, '0');
   const el  = document.getElementById('clock');
-  if (el) el.textContent = `${h}:${m}`;
+  if (el) el.textContent = `${h}:${m}:${s}`;
 }
 setInterval(updateClock, 1000);
 updateClock();
@@ -85,7 +70,7 @@ const STATE_LABELS: Record<string, string> = {
 };
 
 window.axon.onStateChange((state: string) => {
-  currentState           = state;
+  currentState            = state;
   document.body.className = state;
 
   const statusText = document.getElementById('status-text');
@@ -99,7 +84,7 @@ window.axon.onStateChange((state: string) => {
   if (miniDot) miniDot.style.background = dotColors[state] ?? '#333333';
 });
 
-// ── Stats updates ─────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function escapeHtml(s: string): string {
   return s
@@ -109,101 +94,34 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-window.axon.onStatsUpdate((stats: AxonStats) => {
-  const get = (id: string) => document.getElementById(id);
+// ── Stats ─────────────────────────────────────────────────────────────────────
 
-  // ── Capabilities panel ──────────────────────────────────────────────────────
-  const capabilitiesList = get('capabilities-list');
-  if (capabilitiesList) {
-    const gmailOk = stats.capabilities?.gmailConnected    ?? false;
-    const pcOk    = stats.capabilities?.pcMonitorActive   ?? false;
+function updateStats(stats: OrbStats): void {
+  const pct        = Math.min(100, Math.round(stats.focusMin / 4.8));
+  const focusMinEl = document.getElementById('stat-focus-min');
+  if (focusMinEl) focusMinEl.textContent = `${stats.focusMin}m focus`;
 
-    const items: Array<{ label: string; active: boolean }> = [
-      { label: 'Voice',          active: true    },
-      { label: 'Browser',        active: true    },
-      { label: 'Spotify',        active: true    },
-      { label: 'Calendar',       active: true    },
-      { label: 'Gmail',          active: gmailOk },
-      { label: 'App Control',    active: true    },
-      { label: 'Screen Aware',   active: true    },
-      { label: 'Sub-Agents',     active: true    },
-      { label: 'PC Monitor',     active: pcOk    },
-      { label: 'Memory',         active: true    },
-    ];
+  const bar = document.getElementById('focus-bar-fill') as HTMLElement | null;
+  if (bar) bar.style.width = `${pct}%`;
 
-    capabilitiesList.innerHTML = items.map(item => `
-      <div class="capability-item${item.active ? '' : ' capability-dim'}">
-        <span class="capability-dot">${item.active ? '●' : '○'}</span>
-        <span class="capability-label">${escapeHtml(item.label)}</span>
-      </div>
-    `).join('');
-  }
+  const driftEl = document.getElementById('stat-drift');
+  if (driftEl) driftEl.textContent = `${stats.driftScore}%`;
 
-  // ── Capacity panel ──────────────────────────────────────────────────────────
-  const capList = get('capacity-list');
-  if (capList && stats.capacity) {
-    const { cognitiveCapacity, lastBreakMins, screenTimeMins, todayCost } = stats.capacity;
-    const h         = Math.floor(screenTimeMins / 60);
-    const m         = screenTimeMins % 60;
-    const screenStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
-    const costStr   = todayCost !== undefined ? `$${todayCost.toFixed(4)}` : '—';
-    capList.innerHTML = `
-      <div class="panel-row">
-        <span class="panel-row-label">COGNITIVE</span>
-        <div class="mini-bar-wrap"><div class="mini-bar-fill" style="width:${cognitiveCapacity}%"></div></div>
-        <span class="panel-row-value cyan">${cognitiveCapacity}%</span>
-      </div>
-      <div class="panel-row">
-        <span class="panel-row-label">LAST BREAK</span>
-        <span class="panel-row-value">${lastBreakMins}min ago</span>
-      </div>
-      <div class="panel-row">
-        <span class="panel-row-label">SCREEN TIME</span>
-        <span class="panel-row-value">${screenStr}</span>
-      </div>
-      <div class="panel-row">
-        <span class="panel-row-label">TODAY</span>
-        <span class="panel-row-value cyan">${costStr}</span>
-      </div>
-    `;
-  }
+  const streakEl = document.getElementById('stat-streak');
+  if (streakEl) streakEl.textContent = `${stats.streakDays}d`;
 
-  // ── Open apps ───────────────────────────────────────────────────────────────
-  const actRow   = get('apps-active-row');
-  const inactRow = get('apps-inactive-row');
-  const apps     = stats.openApps ?? [];
+  const nudgesEl = document.getElementById('stat-nudges');
+  if (nudgesEl) nudgesEl.textContent = `${stats.interventions}`;
 
-  if (actRow) {
-    const active = apps.filter(a => a.isActive);
-    actRow.innerHTML = active.length > 0
-      ? active.map(a => `<span class="app-chip active">● ${escapeHtml(a.name)}</span>`).join('')
-      : '';
-  }
-  if (inactRow) {
-    const inact = apps.filter(a => !a.isActive);
-    inactRow.innerHTML = inact.length > 0
-      ? inact.map(a => `<span class="app-chip inactive">○ ${escapeHtml(a.name)}</span>`).join('')
-      : '';
-  }
+  const goalEl = document.getElementById('active-goal-text');
+  if (goalEl) goalEl.textContent = stats.activeGoal || '—';
 
-  // ── Goals with actual progress bar + % ─────────────────────────────────────
-  const prList = get('priorities-list');
-  if (prList) {
-    prList.innerHTML = (stats.priorities ?? []).map((p, i) => {
-      const pct = p.progress ?? 0;
-      return `
-        <div class="priority-item">
-          <span class="priority-num">0${i + 1}</span>
-          <span class="priority-text">${escapeHtml(p.text.slice(0, 30))}${p.text.length > 30 ? '…' : ''}</span>
-          <div class="priority-bar-wrap">
-            <div class="priority-bar-fill" style="width:${pct}%"></div>
-          </div>
-          <span class="priority-pct">${pct}%</span>
-        </div>
-      `;
-    }).join('');
-  }
+  const appEl = document.getElementById('current-app');
+  if (appEl) appEl.textContent = stats.currentApp || '—';
+}
 
+window.axon.onStats((data: unknown) => {
+  updateStats(data as OrbStats);
 });
 
 // ── Activity updates ──────────────────────────────────────────────────────────
@@ -213,27 +131,58 @@ window.axon.onActivityUpdate((activity: string) => {
   if (el) el.textContent = activity;
 });
 
-// ── Agent updates ─────────────────────────────────────────────────────────────
+// ── Log entries ───────────────────────────────────────────────────────────────
 
-window.axon.onAgentsUpdate((agents: AgentStatus[]) => {
-  const list = document.getElementById('agents-list');
+const LOG_ICONS: Record<string, string> = {
+  session:      '◈',
+  intervention: '⚡',
+  goal:         '◎',
+  pattern:      '≈',
+  conversation: '◇',
+};
+
+window.axon.onLog((data: unknown) => {
+  const entry = data as LogEntry;
+  const list  = document.getElementById('log-list');
   if (!list) return;
 
-  if (agents.length === 0) {
-    list.innerHTML = '<div class="no-agents">no agents active</div>';
-    return;
-  }
+  const empty = list.querySelector('.log-empty');
+  if (empty) list.removeChild(empty);
 
-  list.innerHTML = agents.map(a => {
-    const icon = a.status === 'running'   ? '<span class="agent-spin">⟳</span>'
-               : a.status === 'completed' ? '✓'
-               : '✗';
-    const cls  = a.status === 'running'   ? 'agent-running'
-               : a.status === 'completed' ? 'agent-done'
-               : 'agent-failed';
-    return `<div class="agent-item ${cls}">${icon} <span>${escapeHtml(a.description)}</span></div>`;
-  }).join('');
+  const icon = LOG_ICONS[entry.type] ?? '·';
+  const div  = document.createElement('div');
+  div.className = 'log-entry';
+  div.innerHTML = `<span class="log-time">${escapeHtml(entry.time)}</span><span class="log-icon">${icon}</span><span class="log-msg">${escapeHtml(entry.message)}</span>`;
+  list.prepend(div);
+
+  while (list.children.length > 50) {
+    list.removeChild(list.lastChild!);
+  }
 });
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+
+function switchTab(tab: 'hud' | 'log'): void {
+  const hudView = document.getElementById('hud-view') as HTMLElement;
+  const logView = document.getElementById('log-view') as HTMLElement;
+  const hudTab  = document.getElementById('tab-hud')  as HTMLElement;
+  const logTab  = document.getElementById('tab-log')  as HTMLElement;
+
+  if (tab === 'hud') {
+    hudView.style.display = 'flex';
+    logView.style.display = 'none';
+    hudTab.classList.add('tab-active');
+    logTab.classList.remove('tab-active');
+  } else {
+    hudView.style.display = 'none';
+    logView.style.display = 'flex';
+    hudTab.classList.remove('tab-active');
+    logTab.classList.add('tab-active');
+  }
+}
+
+(document.getElementById('tab-hud') as HTMLElement).addEventListener('click', () => switchTab('hud'));
+(document.getElementById('tab-log') as HTMLElement).addEventListener('click', () => switchTab('log'));
 
 // ── Waveform canvas ───────────────────────────────────────────────────────────
 // All geometry is derived from the canvas's current pixel size so it scales

@@ -7,6 +7,10 @@ contextBridge.exposeInMainWorld('axon', {
     ipcRenderer.on('orb:message', (_e, msg) => cb(msg)),
   onStatsUpdate: (cb: (stats: unknown) => void) =>
     ipcRenderer.on('axon:stats', (_e, stats) => cb(stats)),
+  onStats: (cb: (data: unknown) => void) =>
+    ipcRenderer.on('axon:stats', (_e, data) => cb(data)),
+  onLog: (cb: (data: unknown) => void) =>
+    ipcRenderer.on('axon:log', (_e, data) => cb(data)),
   tapOrb:        () => ipcRenderer.send('orb:tap'),
   ready:         () => ipcRenderer.send('orb:ready'),
   interruptAxon: () => ipcRenderer.send('axon:interrupt'),

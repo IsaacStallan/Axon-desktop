@@ -96,6 +96,8 @@ const { getClient: getSupabaseClient } = require('./services/cloudSync');
 const { pullCollectiveInsights, logCollectiveSetupSQL } = require('./services/collectiveIntelligence');
 const { startMDMServer } = require('./services/mdmServer');
 const { initTierService, getTier: getTierFromService } = require('./services/tierService');
+const { calculateDrift } = require('./services/patternEngine');
+const { getStreakSummary } = require('./services/consequenceEngine');
 console.error('[Main] all imports done');
 
 // ── Global error handlers ─────────────────────────────────────────────────────
@@ -135,6 +137,16 @@ declare const ONBOARDING_WINDOW_WEBPACK_ENTRY: string;
 declare const ONBOARDING_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 declare const SOFTLOCK_WINDOW_WEBPACK_ENTRY: string;
 declare const SOFTLOCK_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+
+// ── Log entry type and today's session log ────────────────────────────────────
+
+interface LogEntry {
+  time:    string;
+  type:    'session' | 'intervention' | 'goal' | 'pattern' | 'conversation';
+  message: string;
+}
+
+const todayLog: LogEntry[] = [];
 
 // ── Create the floating orb window ──────────────────────────────────────────
 function createOrbWindow(): BrowserWindow {
@@ -375,61 +387,53 @@ export function setOrbState(state: 'idle' | 'listening' | 'speaking' | 'thinking
   updateTrayState(ACTIVITY_LABELS[state] ?? state);
 }
 
-// ── Stats payload for the Command Center UI ──────────────────────────────────
+function addLogEntry(type: LogEntry['type'], message: string): void {
+  const now  = new Date();
+  const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  const entry: LogEntry = { time, type, message };
+  todayLog.push(entry);
+  orbWindow?.webContents.send('axon:log', entry);
+}
+
+// ── Stats payload for the orb HUD ────────────────────────────────────────────
 async function sendStats(): Promise<void> {
   if (!orbWindow || orbWindow.isDestroyed()) return;
 
-  const today  = new Date().toISOString().slice(0, 10);
-  const log    = getSessionLog() as Array<{ label: string; durationMs: number; startedAt: number }>;
-
+  const log      = getSessionLog() as Array<{ label: string; durationMs: number }>;
   const focusMin = Math.round(
     log.filter(e => e.label === 'positive').reduce((s, e) => s + e.durationMs, 0) / 60_000,
   );
-  const driftMin = Math.round(
-    log.filter(e => e.label === 'negative').reduce((s, e) => s + e.durationMs, 0) / 60_000,
-  );
 
-  // Screen time: all entries from today, plus current running session
-  const screenTimeMins = Math.round(
-    log
-      .filter(e => new Date(e.startedAt).toISOString().startsWith(today))
-      .reduce((s, e) => s + e.durationMs, 0) / 60_000,
-  ) + Math.round((getCurrentApp() as { durationMins: number }).durationMins);
+  let driftScore = 0;
+  try {
+    const drift = (calculateDrift as () => { score: number })();
+    driftScore  = Math.round(drift.score ?? 0);
+  } catch { /* pattern engine may not have data yet */ }
 
-  const priorities = (getActiveGoals() as Array<{ text: string; impactScore: number; status: string; progress: number }>)
+  let streakDays = 0;
+  try {
+    const streak = (getStreakSummary as () => { currentStreak: number })();
+    streakDays   = streak.currentStreak ?? 0;
+  } catch { /* streak data not available yet */ }
+
+  const interventions = todayLog.filter(e => e.type === 'intervention').length;
+
+  const goals      = (getActiveGoals() as Array<{ text: string; status: string; impactScore: number }>)
     .filter(g => g.status === 'active')
-    .sort((a, b) => b.impactScore - a.impactScore)
-    .slice(0, 3)
-    .map(g => ({ text: g.text, impactScore: g.impactScore, progress: g.progress ?? 0 }));
+    .sort((a, b) => b.impactScore - a.impactScore);
+  const activeGoal = goals.length > 0 ? goals[0].text : '';
 
-  const commitments = (getOpenCommitments() as Array<{ text: string }>)
-    .slice(0, 4)
-    .map(c => c.text);
-
-  const openApps    = await getOpenApps();
-  const performance = getPerformanceStats();
-  const capacity    = {
-    ...getCognitiveStats(screenTimeMins),
-    todayCost:   getDailyTotal()   as number,
-    sessionCost: getSessionTotal() as number,
-  };
-
-  // Capabilities status
-  const gmailConnected = isGmailConnected() as boolean;
-  const allDevices     = await getAllDeviceStatuses().catch(() => []) as Array<{ platform: string; lastSeen: Date }>;
-  const pcMonitorActive = allDevices.some(
-    (d) => d.platform === 'windows' && (Date.now() - new Date(d.lastSeen).getTime()) < 5 * 60_000,
-  );
+  const currentApp = (getCurrentApp() as { name: string })?.name ?? '—';
+  const todayCost  = getDailyTotal() as number;
 
   orbWindow.webContents.send('axon:stats', {
     focusMin,
-    driftMin,
-    priorities,
-    commitments,
-    openApps,
-    performance,
-    capacity,
-    capabilities: { gmailConnected, pcMonitorActive },
+    driftScore,
+    streakDays,
+    interventions,
+    activeGoal,
+    currentApp,
+    todayCost,
   });
 }
 
@@ -707,6 +711,7 @@ function startFullAxon(userName?: string): void {
       } catch { userName = 'there'; }
     }
     process.env.AXON_USER_NAME = userName;
+    addLogEntry('session', 'Session started');
     console.log(`[Main] starting Axon for: ${userName}`);
 
     console.log('[Main] creating orb window');
@@ -719,7 +724,7 @@ function startFullAxon(userName?: string): void {
     setScreenOrbWindow(orbWindow);
     setObserverOrbWindow(orbWindow);
     setTimeout(() => sendStats(), 4000);
-    setInterval(sendStats, 30_000);
+    setInterval(sendStats, 5_000);
     if (!tray) tray = createTray();
     // Wire soft lock callbacks
     const { setSoftLockCallbacks } = require('./services/softLockService');

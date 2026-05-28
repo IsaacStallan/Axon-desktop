@@ -9,18 +9,17 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --cyan:    #00D4FF;
-      --border:  #004455;
-      --bg:      #000000;
-      --text:    #CCCCCC;
-      --text-hi: #FFFFFF;
-      --dim:     #444444;
-      --green:   #00FFAA;
+      --cyan:   #00D4FF;
+      --border: #004455;
+      --bg:     #000000;
+      --text:   #CCCCCC;
+      --hi:     #FFFFFF;
+      --dim:    #444444;
+      --green:  #00FFAA;
     }
 
     html, body {
-      width: 100%;
-      height: 100%;
+      width: 100%; height: 100%;
       background: transparent;
       overflow: hidden;
       user-select: none;
@@ -28,10 +27,9 @@
       color: var(--text);
     }
 
-    /* ── Main panel ──────────────────────────────────────────────────────────── */
+    /* ── Panel ─────────────────────────────────────────────────────────────── */
     #panel {
-      width: 100%;
-      height: 100vh;
+      width: 100%; height: 100vh;
       background: #000000;
       border: 1px solid var(--border);
       display: flex;
@@ -40,498 +38,275 @@
       position: relative;
     }
 
-    /* ── Scrollable body (everything below the waveform) ─────────────────────── */
-    #scroll-body {
-      flex: 1;
-      overflow-y: auto;
-      min-height: 0;
-    }
-
-    #scroll-body::-webkit-scrollbar { width: 3px; }
-    #scroll-body::-webkit-scrollbar-track { background: transparent; }
-    #scroll-body::-webkit-scrollbar-thumb {
-      background: var(--cyan);
-      border-radius: 2px;
-      opacity: 0.4;
-    }
-
     /* Scanline overlay */
     #panel::after {
       content: '';
-      position: absolute;
-      inset: 0;
+      position: absolute; inset: 0;
       background: repeating-linear-gradient(
         to bottom,
-        transparent 0px,
-        transparent 3px,
-        rgba(0, 212, 255, 0.012) 3px,
-        rgba(0, 212, 255, 0.012) 4px
+        transparent 0px, transparent 3px,
+        rgba(0,212,255,0.012) 3px, rgba(0,212,255,0.012) 4px
       );
       pointer-events: none;
       z-index: 100;
     }
 
-    /* ── Header ──────────────────────────────────────────────────────────────── */
+    /* ── Header ─────────────────────────────────────────────────────────────── */
     #header {
       width: 100%;
-      display: flex;
-      align-items: center;
-      padding: 0 16px;
-      height: 48px;
+      display: flex; align-items: center;
+      padding: 0 16px; height: 48px;
       border-bottom: 1px solid var(--border);
       -webkit-app-region: drag;
-      flex-shrink: 0;
-      gap: 10px;
+      flex-shrink: 0; gap: 10px;
     }
 
     #title {
-      font-size: 13px;
-      font-weight: bold;
-      letter-spacing: 5px;
-      color: var(--cyan);
+      font-size: 13px; font-weight: bold;
+      letter-spacing: 5px; color: var(--cyan);
     }
 
     #status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #333333;
-      flex-shrink: 0;
-      transition: background 0.3s;
+      width: 7px; height: 7px;
+      border-radius: 50%; background: #333333;
+      flex-shrink: 0; transition: background 0.3s;
     }
 
     #status-text {
-      font-size: 10px;
-      letter-spacing: 2px;
-      color: var(--text);
-      flex: 1;
-      transition: color 0.3s;
+      font-size: 10px; letter-spacing: 2px;
+      color: var(--text); flex: 1; transition: color 0.3s;
     }
 
     #clock {
-      font-size: 12px;
-      letter-spacing: 1px;
-      color: var(--text-hi);
+      font-size: 12px; letter-spacing: 1px; color: var(--hi);
       -webkit-app-region: no-drag;
     }
 
     #window-controls {
-      display: flex;
-      gap: 6px;
+      display: flex; gap: 6px;
       -webkit-app-region: no-drag;
     }
 
     #window-controls button {
-      background: none;
-      border: 1px solid var(--border);
-      color: var(--text);
-      width: 24px;
-      height: 24px;
-      font-size: 11px;
-      cursor: pointer;
-      border-radius: 2px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-      line-height: 1;
+      background: none; border: 1px solid var(--border);
+      color: var(--text); width: 24px; height: 24px;
+      font-size: 11px; cursor: pointer; border-radius: 2px;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0; line-height: 1;
       transition: border-color 0.2s, color 0.2s;
     }
 
-    #window-controls button:hover {
-      border-color: var(--cyan);
-      color: var(--cyan);
-    }
+    #window-controls button:hover { border-color: var(--cyan); color: var(--cyan); }
 
-    /* ── Waveform ─────────────────────────────────────────────────────────────── */
+    /* ── Waveform ────────────────────────────────────────────────────────────── */
     #waveform-container {
       width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: flex; align-items: center; justify-content: center;
       padding: 20px 0 18px;
       border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-      cursor: pointer;
+      flex-shrink: 0; cursor: pointer;
       -webkit-app-region: no-drag;
     }
 
-    /* Canvas fills a square that is min(100%, 300px) wide */
-    #waveform-canvas {
-      display: block;
-      width: 100%;
-      height: auto;
-      max-width: 300px;
-    }
+    #waveform-canvas { display: block; width: 100%; height: auto; max-width: 300px; }
 
     /* ── Axon status bar ─────────────────────────────────────────────────────── */
     #axon-status-bar {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      padding: 0 16px;
-      height: 32px;
+      width: 100%; display: flex; align-items: center;
+      padding: 0 16px; height: 32px;
       border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-      gap: 8px;
+      flex-shrink: 0; gap: 8px;
     }
 
     #axon-status-bar::before {
-      content: '▸';
-      font-size: 9px;
-      color: var(--cyan);
-      opacity: 0.7;
-      flex-shrink: 0;
+      content: '▸'; font-size: 9px; color: var(--cyan); opacity: 0.7; flex-shrink: 0;
     }
 
     #axon-activity {
-      font-size: 10px;
-      letter-spacing: 1.5px;
-      color: var(--text);
-      opacity: 0.8;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      font-size: 10px; letter-spacing: 1.5px;
+      color: var(--text); opacity: 0.8;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
 
-    /* ── Stats row (focus / drift) ───────────────────────────────────────────── */
-    #stats-row {
-      width: 100%;
+    /* ── Tab bar ─────────────────────────────────────────────────────────────── */
+    #tab-bar {
       display: flex;
-      height: 50px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
 
-    .stat-block {
+    .tab {
+      flex: 1; background: none; border: none; border-bottom: 2px solid transparent;
+      color: var(--dim); font-family: inherit;
+      font-size: 9px; letter-spacing: 3px;
+      padding: 8px 0; cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+      -webkit-app-region: no-drag;
+    }
+
+    .tab:hover { color: var(--text); }
+    .tab.tab-active { color: var(--cyan); border-bottom-color: var(--cyan); }
+
+    /* ── Tab views ───────────────────────────────────────────────────────────── */
+    .tab-view {
       flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 0 16px;
-    }
-
-    .stat-block + .stat-block {
-      border-left: 1px solid var(--border);
-    }
-
-    .stat-label {
-      font-size: 9px;
-      letter-spacing: 2px;
-      color: var(--text);
-      opacity: 0.45;
-    }
-
-    .stat-value {
-      font-size: 14px;
-      color: var(--cyan);
-      letter-spacing: 1px;
-    }
-
-    /* ── Two-column stats grid (CAPABILITIES + CAPACITY side by side) ───────── */
-    #stats-grid {
-      width: 100%;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    /* Collapse to single column below 480px panel width */
-    @media (max-width: 480px) {
-      #stats-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .grid-section {
-      border-bottom: none;  /* handled by parent border */
-    }
-
-    .grid-section + .grid-section {
-      border-left: 1px solid var(--border);
-    }
-
-    /* Single-column fallback: add bottom border between sections */
-    @media (max-width: 480px) {
-      .grid-section + .grid-section {
-        border-left: none;
-        border-top: 1px solid var(--border);
-      }
-    }
-
-    /* ── Capabilities list ────────────────────────────────────────────────────── */
-    #capabilities-list {
-      padding: 0 12px 12px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 4px 6px;
-    }
-
-    .capability-item {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .capability-dot {
-      font-size: 8px;
-      color: var(--cyan);
-      flex-shrink: 0;
-      line-height: 1;
-    }
-
-    .capability-label {
-      font-size: 9px;
-      letter-spacing: 0.8px;
-      color: var(--text-hi);
-      white-space: nowrap;
-    }
-
-    .capability-item.capability-dim .capability-dot  { color: var(--dim); }
-    .capability-item.capability-dim .capability-label { color: var(--dim); }
-
-    /* ── Shared section styles ────────────────────────────────────────────────── */
-    .section {
-      width: 100%;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    .section-label {
-      font-size: 9px;
-      letter-spacing: 3px;
-      color: var(--text);
-      opacity: 0.45;
-      padding: 10px 16px 6px;
-    }
-
-    /* ── Performance + Capacity panel rows ───────────────────────────────────── */
-    .panel-list {
-      padding: 0 16px 12px;
+      overflow-y: auto;
+      min-height: 0;
       display: flex;
       flex-direction: column;
-      gap: 6px;
     }
 
-    .panel-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    .tab-view::-webkit-scrollbar { width: 3px; }
+    .tab-view::-webkit-scrollbar-track { background: transparent; }
+    .tab-view::-webkit-scrollbar-thumb { background: var(--cyan); border-radius: 2px; opacity: 0.4; }
+
+    /* ── HUD view ────────────────────────────────────────────────────────────── */
+    #hud-view {
+      position: relative;
+      padding: 20px 16px 16px;
+      gap: 14px;
     }
 
-    .panel-row-label {
-      font-size: 9px;
-      letter-spacing: 1.2px;
-      color: var(--text);
-      opacity: 0.55;
-      width: 96px;
-      flex-shrink: 0;
+    /* Corner accents */
+    #hud-view::before, #hud-view::after {
+      content: '';
+      position: absolute;
+      width: 12px; height: 12px;
+      border-color: var(--cyan); border-style: solid;
+      opacity: 0.35; pointer-events: none;
+    }
+    #hud-view::before { top: 8px; left: 8px; border-width: 1px 0 0 1px; }
+    #hud-view::after  { top: 8px; right: 8px; border-width: 1px 1px 0 0; }
+
+    .hud-label {
+      font-size: 9px; letter-spacing: 3px;
+      color: var(--text); opacity: 0.4;
+      margin-bottom: 6px; display: block;
     }
 
-    .panel-row-value {
-      font-size: 10px;
-      color: var(--text-hi);
-      letter-spacing: 0.5px;
-      flex: 1;
+    /* Focus bar */
+    #focus-bar-section { width: 100%; }
+
+    #focus-bar-track {
+      width: 100%; height: 3px;
+      background: var(--border); border-radius: 2px; overflow: hidden;
+      margin-bottom: 5px;
     }
 
-    .panel-row-value.cyan { color: var(--cyan); }
-
-    .mini-bar-wrap {
-      width: 48px;
-      height: 4px;
-      background: var(--border);
-      border-radius: 2px;
-      overflow: hidden;
-      flex-shrink: 0;
+    #focus-bar-fill {
+      height: 100%; width: 0%;
+      background: var(--cyan); border-radius: 2px;
+      transition: width 2s ease;
     }
 
-    .mini-bar-fill {
-      height: 100%;
-      background: var(--cyan);
-      border-radius: 2px;
-      transition: width 1s ease;
+    #focus-bar-meta {
+      font-size: 9px; color: var(--text); opacity: 0.55; letter-spacing: 0.5px;
     }
 
-    /* ── Open apps ───────────────────────────────────────────────────────────── */
-    .apps-row {
+    /* Stat cards */
+    #stats-cards {
       width: 100%;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px 10px;
-      padding: 2px 16px;
-      min-height: 18px;
-    }
-
-    .app-chip {
-      font-size: 9px;
-      letter-spacing: 0.5px;
-      white-space: nowrap;
-    }
-
-    .app-chip.active   { color: var(--cyan); }
-    .app-chip.inactive { color: var(--dim); }
-
-    /* ── Goals ────────────────────────────────────────────────────────────────── */
-    .priority-item {
-      display: flex;
-      align-items: center;
-      padding: 5px 16px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
       gap: 8px;
     }
 
-    .priority-num {
-      font-size: 9px;
-      color: var(--cyan);
-      opacity: 0.6;
-      width: 18px;
-      flex-shrink: 0;
+    .stat-card {
+      border: 1px solid var(--border);
+      padding: 10px 8px;
+      display: flex; flex-direction: column; gap: 4px;
     }
 
-    .priority-text {
-      font-size: 10px;
-      color: var(--text-hi);
-      flex: 1;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      letter-spacing: 0.3px;
+    .stat-card-label {
+      font-size: 8px; letter-spacing: 2.5px; color: var(--text); opacity: 0.4;
     }
 
-    .priority-bar-wrap {
-      width: 56px;
-      height: 4px;
-      background: var(--border);
-      flex-shrink: 0;
-      border-radius: 2px;
-      overflow: hidden;
+    .stat-card-value {
+      font-size: 20px; color: var(--cyan); letter-spacing: 1px; line-height: 1;
     }
 
-    .priority-bar-fill {
-      height: 100%;
-      background: var(--cyan);
-      border-radius: 2px;
-      transition: width 1s ease;
+    /* Goal card */
+    #goal-card {
+      width: 100%; border: 1px solid var(--border); padding: 12px;
     }
 
-    .priority-pct {
-      font-size: 9px;
-      color: var(--cyan);
-      letter-spacing: 0.5px;
-      width: 30px;
-      text-align: right;
-      flex-shrink: 0;
+    #active-goal-text {
+      font-size: 10px; color: var(--hi);
+      letter-spacing: 0.4px; line-height: 1.5;
     }
 
-    /* ── Agents ───────────────────────────────────────────────────────────────── */
-    #agents-list {
-      padding: 0 16px 10px;
+    /* App row */
+    #app-row {
+      display: flex; align-items: center; gap: 10px; font-size: 9px;
     }
 
-    .no-agents {
-      font-size: 9px;
-      color: var(--dim);
-      letter-spacing: 1px;
-      padding: 3px 0;
+    #app-row .hud-label { margin-bottom: 0; }
+    #current-app { color: var(--cyan); font-size: 10px; letter-spacing: 0.5px; }
+
+    /* ── Log view ────────────────────────────────────────────────────────────── */
+    #log-list {
+      padding: 8px 0;
+      display: flex; flex-direction: column;
     }
 
-    .agent-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 9px;
-      letter-spacing: 0.5px;
-      padding: 3px 0;
+    .log-entry {
+      display: flex; align-items: baseline; gap: 8px;
+      padding: 5px 16px;
+      border-bottom: 1px solid rgba(0,68,85,0.35);
     }
 
-    .agent-item.agent-running { color: var(--cyan); }
-    .agent-item.agent-done    { color: var(--green); }
-    .agent-item.agent-failed  { color: #FF4444; }
-
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to   { transform: rotate(360deg); }
-    }
-
-    .agent-spin {
-      display: inline-block;
-      animation: spin 1s linear infinite;
-    }
-
+    .log-time  { font-size: 9px; color: var(--dim); letter-spacing: 0.5px; flex-shrink: 0; width: 38px; }
+    .log-icon  { font-size: 10px; color: var(--cyan); opacity: 0.7; flex-shrink: 0; width: 14px; }
+    .log-msg   { font-size: 10px; color: var(--text); letter-spacing: 0.3px; flex: 1; }
+    .log-empty { font-size: 9px; color: var(--dim); letter-spacing: 1px; padding: 20px; text-align: center; }
 
     /* ── Interrupt button ────────────────────────────────────────────────────── */
     #interrupt-btn {
-      background:    none;
-      border:        1px solid var(--cyan);
-      color:         var(--cyan);
-      font-size:     9px;
-      letter-spacing: 1px;
-      padding:       3px 8px;
-      cursor:        pointer;
-      border-radius: 2px;
-      flex-shrink:   0;
-      -webkit-app-region: no-drag;
-      transition:    background 0.15s;
-      display:       none;
+      background: none; border: 1px solid var(--cyan);
+      color: var(--cyan); font-size: 9px; letter-spacing: 1px;
+      padding: 3px 8px; cursor: pointer; border-radius: 2px;
+      flex-shrink: 0; -webkit-app-region: no-drag;
+      transition: background 0.15s; display: none;
     }
 
-    #interrupt-btn:hover {
-      background: rgba(0, 212, 255, 0.12);
-    }
-
-    /* Only visible while Axon is speaking */
+    #interrupt-btn:hover { background: rgba(0,212,255,0.12); }
     body.speaking #interrupt-btn { display: inline-block; }
 
-    /* ── Status dot colours ───────────────────────────────────────────────────── */
-    body.listening  #status-dot { background: var(--cyan); }
-    body.thinking   #status-dot { background: #FFFFFF; }
-    body.speaking   #status-dot { background: var(--green); }
-    body.idle       #status-dot { background: #333333; }
-    body.urgent     #status-dot { background: #FF4444; }
+    /* ── Status dot colours ──────────────────────────────────────────────────── */
+    body.listening #status-dot { background: var(--cyan); }
+    body.thinking  #status-dot { background: #FFFFFF; }
+    body.speaking  #status-dot { background: var(--green); }
+    body.idle      #status-dot { background: #333333; }
+    body.urgent    #status-dot { background: #FF4444; }
 
-    body.listening  #status-text { color: var(--cyan); }
-    body.thinking   #status-text { color: #CCCCCC; }
-    body.speaking   #status-text { color: var(--green); }
+    body.listening #status-text { color: var(--cyan); }
+    body.thinking  #status-text { color: #CCCCCC; }
+    body.speaking  #status-text { color: var(--green); }
 
-    /* ── Mini pill ────────────────────────────────────────────────────────────── */
+    /* ── Mini pill ───────────────────────────────────────────────────────────── */
     #mini-pill {
-      position: fixed;
-      inset: 0;
-      width: 320px;
-      height: 48px;
+      position: fixed; inset: 0;
+      width: 320px; height: 48px;
       background: #000000;
       border: 1px solid var(--border);
-      align-items: center;
-      gap: 10px;
-      padding: 0 14px;
-      cursor: pointer;
+      align-items: center; gap: 10px;
+      padding: 0 14px; cursor: pointer;
       -webkit-app-region: drag;
       z-index: 200;
     }
 
     #mini-pill span.pill-label {
-      font-size: 11px;
-      letter-spacing: 3px;
-      color: var(--cyan);
+      font-size: 11px; letter-spacing: 3px; color: var(--cyan);
       -webkit-app-region: no-drag;
     }
 
     #mini-status-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #333333;
-      flex-shrink: 0;
-      transition: background 0.3s;
+      width: 6px; height: 6px;
+      border-radius: 50%; background: #333333;
+      flex-shrink: 0; transition: background 0.3s;
     }
 
-    #mini-waveform {
-      display: block;
-      -webkit-app-region: no-drag;
-      flex-shrink: 0;
-    }
+    #mini-waveform { display: block; -webkit-app-region: no-drag; flex-shrink: 0; }
   </style>
 </head>
 <body class="idle">
@@ -552,7 +327,7 @@
       <span id="status-dot"></span>
       <span id="status-text">IDLE</span>
       <button id="interrupt-btn">⏹ Interrupt</button>
-      <span id="clock">00:00</span>
+      <span id="clock">00:00:00</span>
       <div id="window-controls">
         <button id="minimise-btn" title="Minimise">—</button>
         <button id="close-btn" title="Collapse to pill">✕</button>
@@ -564,48 +339,67 @@
       <canvas id="waveform-canvas"></canvas>
     </div>
 
-    <!-- Scrollable body — everything below the waveform scrolls -->
-    <div id="scroll-body">
+    <!-- Axon status bar -->
+    <div id="axon-status-bar">
+      <span id="axon-activity">Monitoring your activity</span>
+    </div>
 
-      <!-- Axon status bar -->
-      <div id="axon-status-bar">
-        <span id="axon-activity">Monitoring your activity</span>
-      </div>
+    <!-- Tab bar -->
+    <div id="tab-bar">
+      <button id="tab-hud" class="tab tab-active">HUD</button>
+      <button id="tab-log" class="tab">LOG</button>
+    </div>
 
-      <!-- Capabilities + Capacity: two-column grid -->
-      <div id="stats-grid">
-        <div class="grid-section" id="capabilities-section">
-          <div class="section-label">CAPABILITIES</div>
-          <div id="capabilities-list"></div>
+    <!-- HUD view -->
+    <div id="hud-view" class="tab-view">
+
+      <!-- Focus bar -->
+      <div id="focus-bar-section">
+        <span class="hud-label">TODAY'S FOCUS</span>
+        <div id="focus-bar-track">
+          <div id="focus-bar-fill"></div>
         </div>
-        <div class="grid-section" id="capacity-section">
-          <div class="section-label">CAPACITY</div>
-          <div class="panel-list" id="capacity-list"></div>
+        <div id="focus-bar-meta"><span id="stat-focus-min">0m</span></div>
+      </div>
+
+      <!-- Stat cards: DRIFT / STREAK / NUDGES -->
+      <div id="stats-cards">
+        <div class="stat-card">
+          <div class="stat-card-label">DRIFT</div>
+          <div class="stat-card-value" id="stat-drift">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-label">STREAK</div>
+          <div class="stat-card-value" id="stat-streak">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-label">NUDGES</div>
+          <div class="stat-card-value" id="stat-nudges">—</div>
         </div>
       </div>
 
-      <!-- Open apps -->
-      <div class="section" id="open-apps-section" style="padding-bottom:10px">
-        <div class="section-label">OPEN APPS</div>
-        <div class="apps-row" id="apps-active-row"></div>
-        <div class="apps-row" id="apps-inactive-row"></div>
+      <!-- Active goal card -->
+      <div id="goal-card">
+        <span class="hud-label">ACTIVE GOAL</span>
+        <div id="active-goal-text">—</div>
       </div>
 
-      <!-- Goals -->
-      <div class="section" id="priorities-section">
-        <div class="section-label">GOALS</div>
-        <div id="priorities-list"></div>
+      <!-- Current app row -->
+      <div id="app-row">
+        <span class="hud-label">NOW</span>
+        <span id="current-app">—</span>
       </div>
 
-      <!-- Agents -->
-      <div class="section" id="agents-section">
-        <div class="section-label">AGENTS</div>
-        <div id="agents-list"><div class="no-agents">no agents active</div></div>
+    </div><!-- /hud-view -->
+
+    <!-- Log view -->
+    <div id="log-view" class="tab-view" style="display:none">
+      <div id="log-list">
+        <div class="log-empty">no activity logged yet</div>
       </div>
+    </div><!-- /log-view -->
 
-    </div><!-- /scroll-body -->
-
-  </div>
+  </div><!-- /panel -->
 
 </body>
 </html>
