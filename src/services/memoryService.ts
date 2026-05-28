@@ -196,6 +196,18 @@ export function setLearnedFacts(facts: string[]): void {
 }
 
 /**
+ * Append a single fact directly to facts.json without Claude extraction.
+ * Used by the discovery conversation to store initial user facts immediately.
+ */
+export function storeFact(fact: string): void {
+  const existing = getLearnedFacts();
+  if (!existing.includes(fact)) {
+    setLearnedFacts([...existing, fact]);
+    cloudSync.pushFact(fact);
+  }
+}
+
+/**
  * Returns the current personality.md soul document, or empty string if none
  * has been generated yet.
  */

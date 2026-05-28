@@ -81,6 +81,7 @@ const { startScreenObserver, setOrbWindow: setObserverOrbWindow } = require('./s
 const { startEmotionEngine } = require('./services/emotionEngine');
 console.error('[Main] loading conversationService');
 const { triggerConversation, stopConversation, setOrbWindow: setConvOrbWindow, handleInterrupt, triggerProactiveConversation } = require('./services/conversationService');
+const { runDiscoveryConversation } = require('./services/discoveryConversation');
 const { setOrbWindow: setTtsOrbWindow, speak: elevenLabsSpeak, getPreferredOutputDevice, prewarmElevenLabs } = require('./services/elevenLabsService');
 const { transcribe: whisperTranscribe } = require('./services/whisperService');
 console.error('[Main] loading briefingService');
@@ -797,6 +798,24 @@ function startFullAxon(userName?: string): void {
           `Hey ${name}. I'm Axon. I'll be watching how you work and stepping in when you need it. Say hey Axon anytime.`,
         );
       }, 3000);
+    }
+
+    // Discovery conversation — runs once on first launch, 5s after welcome message
+    const discoveryMarker = path.join(app.getPath('userData'), 'discovery-complete.json');
+    if (!existsSync(discoveryMarker) && isFirstLaunch) {
+      setTimeout(async () => {
+        try {
+          await (runDiscoveryConversation as (name: string) => Promise<void>)(userName || 'there');
+          writeFileSync(discoveryMarker, JSON.stringify({
+            completedAt: new Date().toISOString(),
+            userName,
+          }));
+          console.log('[Main] discovery complete — full monitoring active');
+        } catch (err) {
+          console.error('[Main] discovery conversation failed:', err);
+          // Continue to monitoring regardless — non-fatal
+        }
+      }, 5000);
     }
 
     // Watchdog: verify the persistent wake word loop is still running every 60s.
