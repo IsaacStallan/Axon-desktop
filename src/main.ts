@@ -791,16 +791,7 @@ function startFullAxon(userName?: string): void {
       }
     }, 1000);
 
-    if (isFirstLaunch) {
-      setTimeout(() => {
-        const name = process.env.AXON_USER_NAME || 'there';
-        void (elevenLabsSpeak as (text: string) => Promise<void>)(
-          `Hey ${name}. I'm Axon. I'll be watching how you work and stepping in when you need it. Say hey Axon anytime.`,
-        );
-      }, 3000);
-    }
-
-    // Discovery conversation — runs once on first launch, 5s after welcome message
+    // Discovery conversation — runs once on first launch after orb window is ready
     const discoveryMarker = path.join(app.getPath('userData'), 'discovery-complete.json');
     if (!existsSync(discoveryMarker) && isFirstLaunch) {
       setTimeout(async () => {
@@ -815,7 +806,7 @@ function startFullAxon(userName?: string): void {
           console.error('[Main] discovery conversation failed:', err);
           // Continue to monitoring regardless — non-fatal
         }
-      }, 5000);
+      }, 4000);
     }
 
     // Watchdog: verify the persistent wake word loop is still running every 60s.

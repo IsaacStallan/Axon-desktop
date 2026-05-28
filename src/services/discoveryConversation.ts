@@ -76,6 +76,7 @@ async function callClaude(history: DiscoveryTurn[]): Promise<DiscoveryResponse> 
 
 export async function runDiscoveryConversation(userName: string): Promise<void> {
   console.log('[Discovery] starting discovery conversation for:', userName);
+  process.env.AXON_DISCOVERY_ACTIVE = 'true';
   setInConversation(true);
 
   // History only contains user/assistant turns — opening message is spoken but not
@@ -99,16 +100,22 @@ export async function runDiscoveryConversation(userName: string): Promise<void> 
       updateOrbState('listening', 'Listening...');
       console.log('[Discovery] listening for response...');
       const userResponse = await whisperService.recordUntilSilence({
-        maxDuration:      90,
-        silenceThreshold: 2.0,
-        initialTimeout:   12,
+        maxDuration:      120,
+        silenceThreshold: 3.5,
+        initialTimeout:   15,
       });
 
-      if (!userResponse || userResponse.trim().length < 3) {
-        console.log('[Discovery] no response detected — re-prompting');
+      const wordCount = userResponse?.trim().split(/\s+/).length ?? 0;
+
+      if (!userResponse || wordCount < 4) {
+        console.log('[Discovery] response too short:', userResponse);
+        turns--; // don't burn a turn on a missed/cut-off response
         updateOrbState('speaking', 'Getting to know you...');
-        await elevenLabsService.speak("I didn't catch that — what were you saying?");
-        turns--; // don't burn a turn on a missed response
+        if (!userResponse || userResponse.trim().length < 2) {
+          await elevenLabsService.speak("I didn't catch that — go ahead.");
+        } else {
+          await elevenLabsService.speak("Keep going — I'm listening.");
+        }
         continue;
       }
 
@@ -144,6 +151,7 @@ export async function runDiscoveryConversation(userName: string): Promise<void> 
     console.log('[Discovery] complete — transitioning to monitoring');
 
   } finally {
+    process.env.AXON_DISCOVERY_ACTIVE = 'false';
     setInConversation(false);
     updateOrbState('idle', 'Ready. Watching.');
   }

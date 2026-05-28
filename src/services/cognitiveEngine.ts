@@ -411,6 +411,11 @@ function actSilentlyDecision(task: string, model: CognitiveDecision['modelTier']
 
 function evaluateDecision(obs: ObservationState): CognitiveDecision {
 
+  // Suppress all interventions while the first-launch discovery conversation is running
+  if (process.env.AXON_DISCOVERY_ACTIVE === 'true') {
+    return watchDecision('Discovery conversation active — suppressing interventions', 100);
+  }
+
   // ── Gate 1: Hard blocks (never bypassed) ──────────────────────────────────
   if (obs.softLockActive)     return watchDecision('Soft lock active', 0);
   if (obs.axonSnoozed)        return watchDecision('Axon snoozed by user', 0);
