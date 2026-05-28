@@ -150,7 +150,6 @@ function initOnboarding(): void {
       target.style.justifyContent = 'center';
     }
     currentScreen = n;
-    if (n === 3) setTimeout(startVoiceTest, 600);
     if (n === 4) setTimeout(() => {
       if (btnFinish) {
         btnFinish.style.opacity = '1';
@@ -214,41 +213,9 @@ function initOnboarding(): void {
   const btnPermSkip = document.getElementById('btn-perm-skip');
   if (btnPermSkip) btnPermSkip.addEventListener('click', () => goTo(3));
 
-  // ── Screen 3: Voice test ───────────────────────────────────────────────────
-  const wave3Canvas = document.getElementById('wave3') as HTMLCanvasElement | null;
-  const wave3Energy = new Float32Array(N_BARS);
-  let   wave3Frame  = 0;
-  let   wave3State: 'idle' | 'speaking' = 'idle';
-  if (!wave3Canvas) console.error('[Onboarding] canvas #wave3 not found');
-
-  (function animateWave3() {
-    try {
-      wave3Frame++;
-      tickEnergy(wave3Energy, wave3Frame, wave3State);
-      if (currentScreen === 3) drawWave(wave3Canvas, wave3Energy, wave3Frame, wave3State);
-    } catch (err) { console.error('[Onboarding] animateWave3 error:', err); }
-    requestAnimationFrame(animateWave3);
-  })();
-
-  async function startVoiceTest(): Promise<void> {
-    wave3State = 'speaking';
-    await axonAPI('speak', "I'm Axon. Say hey Axon to wake me.");
-    wave3State = 'idle';
-    setTimeout(() => {
-      const skip = document.getElementById('btn-skip-voice');
-      if (skip) {
-        skip.style.opacity = '1';
-        skip.style.pointerEvents = 'all';
-      }
-    }, 400);
-  }
-
+  // ── Screen 3: Almost ready ─────────────────────────────────────────────────
   const btnSkipVoice = document.getElementById('btn-skip-voice');
   if (btnSkipVoice) btnSkipVoice.addEventListener('click', () => goTo(4));
-
-  axonAPI('onWakeWordDetected', () => {
-    if (currentScreen === 3) goTo(4);
-  });
 
   // ── Screen 4: Ready ────────────────────────────────────────────────────────
   const wave4Canvas = document.getElementById('wave4') as HTMLCanvasElement | null;

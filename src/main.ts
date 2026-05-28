@@ -779,8 +779,15 @@ function startFullAxon(userName?: string): void {
     startScreenMonitor();
     startScreenObserver();
     startEmotionEngine();
-    startWakeWordListener();
-    console.log('[Main] wake word listener started');
+    // Non-blocking wake word start — deferred so the orb window finishes loading first
+    setTimeout(() => {
+      try {
+        startWakeWordListener();
+        console.log('[Main] wake word listener started');
+      } catch (err) {
+        console.error('[Main] wake word listener failed to start:', err);
+      }
+    }, 1000);
 
     if (isFirstLaunch) {
       setTimeout(() => {
@@ -904,15 +911,6 @@ app.on('ready', () => {
     if (!existsSync(onboardingDonePath)) {
       console.log('[Main] first launch — showing onboarding');
       onboardingWindow = createOnboardingWindow();
-      // Start wake word listener so voice test screen (screen 3) actually works
-      setTimeout(() => {
-        try {
-          startWakeWordListener();
-          console.log('[Onboarding] wake word listener started for voice test');
-        } catch (err) {
-          console.error('[Onboarding] failed to start wake word listener:', err);
-        }
-      }, 2000);
       return;
     }
 
