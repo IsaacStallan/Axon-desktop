@@ -5,7 +5,7 @@ declare global {
     electronAPI: {
       requestAccessibility: () => Promise<boolean>;
       speak:               (text: string) => Promise<void>;
-      completeOnboarding:  () => Promise<void>;
+      completeOnboarding:  (name: string) => Promise<void>;
       onWakeWordDetected:  (callback: () => void) => void;
     };
   }
@@ -135,6 +135,7 @@ function initOnboarding(): void {
 
   // ── Screen navigation ──────────────────────────────────────────────────────
   let currentScreen = 1;
+  let userName = '';
 
   function goTo(n: number): void {
     for (const i of [1, 2, 3, 4]) {
@@ -173,15 +174,21 @@ function initOnboarding(): void {
     requestAnimationFrame(animateWave1);
   })();
 
-  const btnStart = document.getElementById('btn-start') as HTMLButtonElement | null;
+  const btnStart  = document.getElementById('btn-start')  as HTMLButtonElement | null;
+  const inputName = document.getElementById('input-name') as HTMLInputElement | null;
   if (!btnStart) {
     console.error('[Onboarding] #btn-start not found');
   } else {
-    setTimeout(() => {
-      btnStart.style.opacity = '1';
-      btnStart.style.pointerEvents = 'all';
-    }, 2000);
     btnStart.addEventListener('click', () => goTo(2));
+    if (inputName) {
+      inputName.addEventListener('input', () => {
+        userName = inputName.value.trim();
+        btnStart.style.display = userName.length >= 2 ? 'block' : 'none';
+      });
+      inputName.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && userName.length >= 2) btnStart.click();
+      });
+    }
   }
 
   // ── Screen 2: Permissions ──────────────────────────────────────────────────
@@ -268,7 +275,7 @@ function initOnboarding(): void {
       wave4State = 'speaking';
       await axonAPI('speak', "Let's get to work.");
       wave4State = 'idle';
-      await axonAPI('completeOnboarding');
+      await axonAPI('completeOnboarding', userName);
     });
   }
 

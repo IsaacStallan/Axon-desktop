@@ -201,7 +201,8 @@ export async function fireTier2Consequence(params: {
   if (!checkTier2Gates(params)) return false;
 
   const mins = Math.round(params.driftMinutes);
-  const msg  = `Hey — just a heads up, Isaac is supposed to be working right now but has been off task for ${mins} minutes. He set this accountability message up himself.`;
+  const userName = process.env.AXON_USER_NAME || 'the user';
+  const msg  = `Hey — just a heads up, ${userName} is supposed to be working right now but has been off task for ${mins} minutes. They set this accountability message up themselves.`;
 
   try {
     const safe   = msg.replace(/"/g, '\\"');

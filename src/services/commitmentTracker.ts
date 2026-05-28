@@ -12,7 +12,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
 export interface Commitment {
   id:             string;
   text:           string;         // e.g. "do GrantForge outreach"
-  madeAt:         string;         // ISO timestamp of when Isaac said he'd do it
+  madeAt:         string;         // ISO timestamp of when the user said he'd do it
   dueDate:        string | null;  // "today", "tomorrow", or "YYYY-MM-DD" if mentioned
   followedUpAt:   string | null;  // when Axon last asked about it
   completedAt:    string | null;
@@ -167,14 +167,14 @@ export function detectCompletionsFromTranscript(transcript: string): string[] {
 
 /**
  * Sends recent conversation exchanges to Claude and extracts any commitments
- * Isaac made ("I'll do X", "I'm going to X", "I need to X by Y").
+ * the user made ("I'll do X", "I'm going to X", "I need to X by Y").
  * Fire-and-forget — caller should not await on the hot path.
  */
 export async function extractCommitmentsFromSession(exchanges: Exchange[]): Promise<void> {
   if (exchanges.length === 0) return;
 
   const text = exchanges
-    .map(e => `Isaac: ${e.user}\nAxon: ${e.axon}`)
+    .map(e => `the user: ${e.user}\nAxon: ${e.axon}`)
     .join('\n\n');
 
   try {
@@ -183,9 +183,9 @@ export async function extractCommitmentsFromSession(exchanges: Exchange[]): Prom
       max_tokens: 400,
       messages:   [{
         role:    'user',
-        content: `Extract every commitment Isaac made in this conversation — things he said he WILL do, plans to do, or needs to do.
+        content: `Extract every commitment the user made in this conversation — things he said he WILL do, plans to do, or needs to do.
 Include implied commitments ("I'll look into that", "I'm going to start that tomorrow").
-Exclude things he's already done or that Axon suggested without Isaac agreeing.
+Exclude things he's already done or that Axon suggested without the user agreeing.
 
 Return ONLY a raw JSON array of objects: [{"text": "...", "dueDate": "today|tomorrow|YYYY-MM-DD|null"}]
 Return [] if no commitments were made.

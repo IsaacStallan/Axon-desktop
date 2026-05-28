@@ -593,7 +593,7 @@ async function generateMessage(
     const visible = screenCtx.visibleContent;
 
     if (app.includes('youtube') && visible) {
-      screenDetail = `\nScreen: Isaac is watching "${visible.slice(0, 80)}" on YouTube.`;
+      screenDetail = `\nScreen: ${process.env.AXON_USER_NAME || 'The user'} is watching "${visible.slice(0, 80)}" on YouTube.`;
     } else if (
       (app.includes('safari') || app.includes('chrome') || app.includes('firefox') || app.includes('arc')) &&
       visible
@@ -615,17 +615,18 @@ async function generateMessage(
   // Calendar context hint for the model
   const calendarHint = eventType && eventType !== 'unknown' && eventName
     ? eventType === 'work_block'
-      ? `\nCalendar context: Isaac has "${eventName}" scheduled right now — this is a work block. ` +
-        `If he is distracted, call it out directly: "You've got a work block scheduled right now and you're on ${curr.name} — that's exactly backwards."`
+      ? `\nCalendar context: ${process.env.AXON_USER_NAME || 'The user'} has "${eventName}" scheduled right now — this is a work block. ` +
+        `If they are distracted, call it out directly: "You've got a work block scheduled right now and you're on ${curr.name} — that's exactly backwards."`
       : eventType === 'personal'
-        ? `\nCalendar context: Isaac has "${eventName}" (personal block) on the calendar. Keep the tone light — this is a gentle check-in, not a hard push.`
+        ? `\nCalendar context: ${process.env.AXON_USER_NAME || 'The user'} has "${eventName}" (personal block) on the calendar. Keep the tone light — this is a gentle check-in, not a hard push.`
         : ''
     : '';
 
-  const areticaInstruction = `Before generating this intervention, apply the three Aretica principles. Would this intervention move Isaac closer to his fullest self? Is it accurate rather than comfortable? Generate accordingly.`;
+  const areticaInstruction = `Before generating this intervention, apply the three Aretica principles. Would this intervention move ${process.env.AXON_USER_NAME || 'the user'} closer to their fullest self? Is it accurate rather than comfortable? Generate accordingly.`;
 
+  const _user = process.env.AXON_USER_NAME || 'the user';
   const system = isBreak
-    ? `You are Axon — Isaac's AI. He has been heads-down and genuinely needs a break.
+    ? `You are Axon — ${_user}'s AI. They have been heads-down and genuinely need a break.
 Write ONE warm, specific spoken suggestion — 1–2 sentences.
 Tone: generous and supportive, NOT critical. Acknowledge the work done, recommend the rest.
 Be specific about duration. No markdown. No quotes. Just the spoken words.
@@ -639,9 +640,8 @@ ${emotionFrag}
 ${framing.instruction}
 
 ${AXON_CAPABILITIES}`
-    : `You are Axon — an AI built specifically for Isaac.
-Isaac is 20. Building House Stallan — financial freedom, empire, legacy. Biggest weakness: dopamine distraction.
-${type === 'recovery' ? `\nIsaac's war statement:\n"${profile.recoveryMessage}"` : ''}
+    : `You are Axon — an AI built specifically for ${_user}.
+${type === 'recovery' ? `\n${_user}'s war statement:\n"${profile.recoveryMessage}"` : ''}
 Generate ONE spoken intervention — 1–3 tight sentences.
 Rules:
 - Name the app and how long he has been on it
@@ -664,7 +664,7 @@ ${AXON_CAPABILITIES}`;
   const behaviourPattern = getPatternForCurrentContext();
   const patternCtx = !isBreak
     ? `\nBehavioural pattern context:\n` +
-      `- Isaac has opened ${behaviourPattern.currentApp} ${behaviourPattern.occurrenceCount} times in similar conditions\n` +
+      `- ${_user} has opened ${behaviourPattern.currentApp} ${behaviourPattern.occurrenceCount} times in similar conditions\n` +
       `- Last ${Math.max(0, behaviourPattern.occurrenceCount - 1)} times this happened at this time of day, he stayed in this app for an average of ${behaviourPattern.avgDriftMinutes} minutes\n` +
       `- The app he was in before this was ${behaviourPattern.previousApp} for ${behaviourPattern.previousAppMinutes} minutes\n` +
       `- This pattern occurs most on ${behaviourPattern.commonDays}\n` +
@@ -672,11 +672,11 @@ ${AXON_CAPABILITIES}`;
     : '';
 
   const user = isBreak
-    ? `Isaac has been focused for ${Math.round(pattern.continuousFocusMins)} minutes straight.
+    ? `${_user} has been focused for ${Math.round(pattern.continuousFocusMins)} minutes straight.
 Current app: ${curr.name}
 Time: ${hour}:00
 Write the break suggestion.`
-    : `Isaac is on ${curr.name} for ${Math.round(curr.durationMins)} minutes.
+    : `${_user} is on ${curr.name} for ${Math.round(curr.durationMins)} minutes.
 Drift probability: ${pattern.driftProbability}% — ${pattern.reason}
 Time: ${hour}:00
 Goals:\n${goals || '(none set)'}

@@ -205,7 +205,7 @@ export async function runInterventionLearning(): Promise<void> {
   const failed  = recent.filter(i => i.courseCorrected === false && i.userResponded);
 
   const prompt =
-    `Analyse these intervention outcomes for Isaac:\n\n` +
+    `Analyse these intervention outcomes for ${process.env.AXON_USER_NAME || 'the user'}:\n\n` +
     `WORKED (${worked.length} that course corrected):\n` +
     worked.map(i =>
       `- Type: ${i.type}, App: ${i.appContext}, Hour: ${new Date(i.timestamp).getHours()}:00, ` +
@@ -265,14 +265,13 @@ export async function runWeeklyReview(): Promise<string> {
   const profile = getUserProfile();
 
   const system =
-    `You are Axon — Isaac's personal AI delivering his weekly review aloud.\n` +
-    `Isaac is 20. Building House Stallan. Obsessed with execution and legacy.\n` +
+    `You are Axon — ${process.env.AXON_USER_NAME || 'the user'}'s personal AI delivering their weekly review aloud.\n` +
     `Tone: direct, specific, honest. Lead with the real win, then the hard truth, ` +
     `then one clear focus point for next week. 4–6 sentences max.\n` +
     `This is TTS — no markdown, no bullet points, no lists. Speak like a trusted advisor.\n\n` +
     `${ARETICA_VISION}\n\n` +
     `Evaluate this week against growth, not just productivity metrics. ` +
-    `Did Isaac move closer to his fullest self? Where did he fall short of his own standard? ` +
+    `Did ${process.env.AXON_USER_NAME || 'the user'} move closer to their fullest self? Where did they fall short of their own standard? ` +
     `Be accurate. Not comfortable.`;
 
   const prompt =

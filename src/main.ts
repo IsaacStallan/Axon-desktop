@@ -14,7 +14,7 @@ import {
 import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { existsSync, writeFileSync } from 'fs';
+import { existsSync, writeFileSync, readFileSync } from 'fs';
 import * as dotenv from 'dotenv';
 import { autoUpdater } from 'electron-updater';
 import { BUILD_CONSTANTS } from './buildConstants';
@@ -123,8 +123,9 @@ let orbWindow:        BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
 let softlockWindow:   BrowserWindow | null = null;
 let tray:             Tray | null = null;
-let isConversing  = false;
-let updateReady   = false;
+let isConversing            = false;
+let updateReady             = false;
+let wakeWordListenerStarted = false;
 
 declare const ORB_WINDOW_WEBPACK_ENTRY: string;
 declare const ORB_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -450,7 +451,18 @@ function beginConversation(): void {
 }
 
 function startWakeWordListener(): void {
-  void (startPersistentWakeWordLoop as Function)(() => beginConversation(), setOrbState);
+  if (wakeWordListenerStarted && (isWakeWordLoopRunning as () => boolean)()) {
+    console.log('[Main] wake word listener already running — skipping');
+    return;
+  }
+  wakeWordListenerStarted = true;
+  void (startPersistentWakeWordLoop as Function)(() => {
+    if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+      notifyOnboardingWakeWord();
+    } else {
+      beginConversation();
+    }
+  }, setOrbState);
 }
 
 // ── Onboarding window ────────────────────────────────────────────────────────
@@ -505,49 +517,6 @@ ipcMain.handle('permissions:requestAccessibility', () =>
   systemPreferences.isTrustedAccessibilityClient(true),
 );
 
-ipcMain.handle('onboarding:speak', async (_e, text: string) => {
-  try {
-    await (elevenLabsSpeak as (t: string) => Promise<void>)(text);
-  } catch (e) {
-    console.warn('[Onboarding] TTS error:', e);
-  }
-});
-
-ipcMain.handle('onboarding:listen', async (_e, secs: number) => {
-  try {
-    return await (whisperTranscribe as (s: number) => Promise<string>)(secs ?? 12);
-  } catch (e) {
-    console.warn('[Onboarding] transcribe error:', e);
-    return '';
-  }
-});
-
-ipcMain.handle('onboarding:saveAnswers', (_e, answers: unknown) => {
-  try {
-    writeFileSync(
-      path.join(app.getPath('userData'), 'onboarding-answers.json'),
-      JSON.stringify(answers, null, 2), 'utf8',
-    );
-  } catch (e) {
-    console.warn('[Onboarding] saveAnswers error:', e);
-  }
-});
-
-ipcMain.handle('onboarding:complete', () => {
-  try {
-    writeFileSync(
-      path.join(app.getPath('userData'), 'onboarding-complete.json'),
-      JSON.stringify({ completedAt: new Date().toISOString() }), 'utf8',
-    );
-  } catch (e) {
-    console.warn('[Onboarding] could not write completion marker:', e);
-  }
-  onboardingWindow?.destroy();
-  onboardingWindow = null;
-  console.log('[Main] startFullAxon called from:', new Error().stack?.split('\n')[2]);
-  startFullAxon();
-});
-
 // ── electronAPI IPC handlers (new onboarding flow) ───────────────────────────
 
 ipcMain.handle('request-accessibility', () =>
@@ -562,19 +531,20 @@ ipcMain.handle('onboarding-speak', async (_e, text: string) => {
   }
 });
 
-ipcMain.handle('complete-onboarding', () => {
+ipcMain.handle('complete-onboarding', (_, userName: string) => {
   try {
     writeFileSync(
       path.join(app.getPath('userData'), 'onboarding-complete.json'),
-      JSON.stringify({ completedAt: new Date().toISOString() }), 'utf8',
+      JSON.stringify({ completedAt: new Date().toISOString(), userName: userName || 'there' }), 'utf8',
     );
   } catch (e) {
     console.warn('[Onboarding] could not write completion marker:', e);
   }
   onboardingWindow?.destroy();
   onboardingWindow = null;
+  console.log(`[Main] onboarding complete for user: ${userName || 'there'}`);
   console.log('[Main] startFullAxon called from:', new Error().stack?.split('\n')[2]);
-  startFullAxon();
+  startFullAxon(userName || 'there');
 });
 
 export function notifyOnboardingWakeWord(): void {
@@ -708,8 +678,10 @@ function checkRequiredConfig(): boolean {
 // Called either directly from ready (if onboarding already done)
 // or from the onboarding:complete IPC handler.
 
-function startFullAxon(): void {
+function startFullAxon(userName?: string): void {
   try {
+    const isFirstLaunch = !!userName;
+
     if (!checkRequiredConfig()) {
       const { width, height } = screen.getPrimaryDisplay().workAreaSize;
       const errWin = new BrowserWindow({
@@ -727,6 +699,15 @@ function startFullAxon(): void {
       if (!tray) tray = createTray();
       return;
     }
+
+    if (!userName) {
+      try {
+        const data = JSON.parse(readFileSync(path.join(app.getPath('userData'), 'onboarding-complete.json'), 'utf8'));
+        userName = data.userName || 'there';
+      } catch { userName = 'there'; }
+    }
+    process.env.AXON_USER_NAME = userName;
+    console.log(`[Main] starting Axon for: ${userName}`);
 
     console.log('[Main] creating orb window');
     orbWindow = createOrbWindow();
@@ -778,7 +759,7 @@ function startFullAxon(): void {
         setTimeout(() => {
           const reason = pendingSoftLockReason || 'your session';
           void (triggerProactiveConversation as (p: string) => Promise<void>)(
-            `The soft lock for "${reason}" just ended. Isaac has returned. Ask him briefly and directly how it went — one short question. "How was the ${reason.toLowerCase()}?" Nothing more. Wait for his answer.`,
+            `The soft lock for "${reason}" just ended. The user has returned. Ask them briefly how it went.`,
           );
         }, 3000);
       },
@@ -799,6 +780,16 @@ function startFullAxon(): void {
     startScreenObserver();
     startEmotionEngine();
     startWakeWordListener();
+    console.log('[Main] wake word listener started');
+
+    if (isFirstLaunch) {
+      setTimeout(() => {
+        const name = process.env.AXON_USER_NAME || 'there';
+        void (elevenLabsSpeak as (text: string) => Promise<void>)(
+          `Hey ${name}. I'm Axon. I'll be watching how you work and stepping in when you need it. Say hey Axon anytime.`,
+        );
+      }, 3000);
+    }
 
     // Watchdog: verify the persistent wake word loop is still running every 60s.
     setInterval(() => {
@@ -851,7 +842,7 @@ function startFullAxon(): void {
       // MDM server — receives iPhone check-ins for presence detection
       (startMDMServer as () => void)();
 
-      // AirPods connect detection — greet Isaac when he puts them on
+      // AirPods connect detection — greet the user when they put them on
       let lastOutputDevice = (getPreferredOutputDevice as () => string)();
       setInterval(() => {
         const current = (getPreferredOutputDevice as () => string)();
@@ -913,7 +904,15 @@ app.on('ready', () => {
     if (!existsSync(onboardingDonePath)) {
       console.log('[Main] first launch — showing onboarding');
       onboardingWindow = createOnboardingWindow();
-      // startFullAxon() is called by the onboarding:complete IPC handler
+      // Start wake word listener so voice test screen (screen 3) actually works
+      setTimeout(() => {
+        try {
+          startWakeWordListener();
+          console.log('[Onboarding] wake word listener started for voice test');
+        } catch (err) {
+          console.error('[Onboarding] failed to start wake word listener:', err);
+        }
+      }, 2000);
       return;
     }
 

@@ -70,7 +70,7 @@ async function syncFacts(): Promise<void> {
     .map(w => `${w.start}:00–${w.end}:00`)
     .join(', ');
 
-  const content = `# Isaac — Axon Profile
+  const content = `# User — Axon Profile
 *Last updated: ${ts}*
 *Total facts: ${facts.length}*
 

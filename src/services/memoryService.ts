@@ -154,7 +154,7 @@ export function getRecentConversations(days: number): string {
       const time = new Date(e.timestamp).toLocaleTimeString('en-AU', {
         hour: '2-digit', minute: '2-digit',
       });
-      lines.push(`  ${time} Isaac: ${e.user}`);
+      lines.push(`  ${time} ${process.env.AXON_USER_NAME || 'User'}: ${e.user}`);
       lines.push(`  ${time} Axon:  ${e.axon}`);
     }
   }
@@ -237,7 +237,7 @@ export async function generateSoul(): Promise<string> {
   let convoText = allExchanges
     .map(e => {
       const ts = new Date(e.timestamp).toLocaleString('en-AU');
-      return `[${ts}]\nIsaac: ${e.user}\nAxon:  ${e.axon}`;
+      return `[${ts}]\n${process.env.AXON_USER_NAME || 'User'}: ${e.user}\nAxon:  ${e.axon}`;
     })
     .join('\n\n');
 
@@ -270,8 +270,8 @@ export async function generateSoul(): Promise<string> {
       max_tokens: 2000,
       messages:   [{
         role:    'user',
-        content: `You are Axon — an AI built by Isaac Stallan.
-You have access to your full conversation history with Isaac and everything you have learned about him.
+        content: `You are Axon — an AI built for ${process.env.AXON_USER_NAME || 'the user'}.
+You have access to your full conversation history and everything you have learned about them.
 Your task: write personality.md — YOUR SOUL.
 
 This document is not a character sheet. It is practical, working instructions to your future self.
@@ -280,13 +280,13 @@ Every new session you will read this first. Write it as if you are briefing your
 Base EVERYTHING on observed evidence from the data below. No generic advice. Specific patterns only.
 
 Structure your document with these sections:
-1. How Isaac actually communicates — his real speech patterns, not how he thinks he talks
+1. How ${process.env.AXON_USER_NAME || 'the user'} actually communicates — their real speech patterns, not how they think they talk
 2. What lands well vs what falls flat — specific things that work and don't work
-3. His thinking and decision-making patterns — how he reasons, where he gets stuck
-4. Tone calibration — the exact register that fits him at different times of day / energy levels
-5. What motivates him and what kills his momentum
+3. Their thinking and decision-making patterns — how they reason, where they get stuck
+4. Tone calibration — the exact register that fits them at different times of day / energy levels
+5. What motivates them and what kills their momentum
 6. Patterns to watch and call out — recurring traps or blind spots to flag proactively
-7. What he needs from you most — ranked by frequency in conversations so far
+7. What they need from you most — ranked by frequency in conversations so far
 8. Key facts always worth keeping front-of-mind
 
 Write in second person, direct, no fluff. This is a living document — specific over general.
@@ -321,7 +321,7 @@ ${convoText || 'No conversations recorded yet.'}`,
  * by merging related facts together. All unique information is preserved.
  */
 async function consolidateFacts(facts: string[]): Promise<string[]> {
-  const consolidationPrompt = `You have ${facts.length} facts about Isaac. Consolidate these into ~300 facts by:
+  const consolidationPrompt = `You have ${facts.length} facts about ${process.env.AXON_USER_NAME || 'the user'}. Consolidate these into ~300 facts by:
 1. Merging related facts into single richer facts (e.g. "works at Downer" + "Downer involves AI training" = "Works at Downer Group on AI training for infrastructure defect detection")
 2. Removing outdated facts when newer ones supersede them
 3. Keeping all specific details, preferences, goals, and behavioural patterns
@@ -364,22 +364,23 @@ export async function extractAndSaveFacts(exchanges: Exchange[]): Promise<void> 
   if (exchanges.length === 0) return;
 
   const convoText = exchanges
-    .map(e => `Isaac: ${e.user}\nAxon: ${e.axon}`)
+    .map(e => `${process.env.AXON_USER_NAME || 'User'}: ${e.user}\nAxon: ${e.axon}`)
     .join('\n\n');
 
-  const extractionPrompt = `Extract factual information about Isaac from this conversation exchange.
+  const _memUser = process.env.AXON_USER_NAME || 'the user';
+  const extractionPrompt = `Extract factual information about ${_memUser} from this conversation exchange.
 
 STRICT RULES — only extract a fact if ALL of these are true:
-1. Isaac said it directly and clearly about himself ("I work at...", "I want to...", "My goal is...")
+1. ${_memUser} said it directly and clearly about themselves ("I work at...", "I want to...", "My goal is...")
 2. It is specific and verifiable — not vague or inferred
-3. It is about Isaac's real life — not hypothetical, not about someone else, not from media
-4. You are 100% certain Isaac was speaking to Axon, not to another person
+3. It is about ${_memUser}'s real life — not hypothetical, not about someone else, not from media
+4. You are 100% certain ${_memUser} was speaking to Axon, not to another person
 
 DO NOT extract:
 - Anything that sounds like song lyrics, poetry, or media dialogue
 - Anything said in third person that might be about someone else
 - Inferences or assumptions — only explicit statements
-- Questions Isaac asked (only answers/statements)
+- Questions ${_memUser} asked (only answers/statements)
 - Anything prefixed with "apparently", "I think", "maybe", "someone told me"
 
 If you are not certain a statement meets ALL rules above — skip it entirely.

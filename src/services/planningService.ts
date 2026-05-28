@@ -70,7 +70,7 @@ async function generateNightlyPrep(): Promise<NightlyPrep> {
       messages: [{
         role: 'user',
         content:
-          `You are preparing Isaac's morning brief. Today is ${dateStr}.\n\n` +
+          `You are preparing ${process.env.AXON_USER_NAME || 'the user'}'s morning brief. Today is ${dateStr}.\n\n` +
           `Calendar:\n${calendarSummary}\n\n` +
           `Goals: ${goalsJson}\n\n` +
           `Weekly plan for today: ${weeklyPlanDay}\n\n` +
@@ -194,14 +194,15 @@ export async function generateWeeklyLifePlan(): Promise<string> {
     ? Math.round(patterns.reduce((s, p) => s + p.totalFocusMinutes, 0) / patterns.length)
     : 120;
 
-  const system = `You are Axon — Isaac's AI. Generate a structured 7-day weekly plan as JSON.
+  const _planUser = process.env.AXON_USER_NAME || 'the user';
+  const system = `You are Axon — ${_planUser}'s AI. Generate a structured 7-day weekly plan as JSON.
 
 ${ARETICA_VISION}
 
-This plan is built around the Aretica vision — not preferences, not comfort. Every scheduled block should move Isaac closer to his fullest self. Deep work windows protect his peak output hours. Gym times honour his commitment to physical capability. Wind-down and soft lock times enforce the discipline he has already said he wants.
+This plan is built around the Aretica vision — not preferences, not comfort. Every scheduled block should move ${_planUser} closer to their fullest self. Deep work windows protect their peak output hours. Gym times honour their commitment to physical capability. Wind-down and soft lock times enforce the discipline they have already said they want.
 
 
-Isaac's known patterns:
+Known patterns:
 - Peak focus: 9am–1pm (Tuesday/Wednesday strongest)
 - Low energy: 1pm–3pm
 - Gym window: 5:30pm
@@ -310,13 +311,12 @@ export async function getDailyPlan(
       model:      'claude-haiku-4-5-20251001',
       max_tokens: 600,
       system:
-        `You are Axon — Isaac's AI. Isaac is 20, building House Stallan — a business empire. ` +
-        `He is obsessed with execution and hates wasted days.\n\n` +
+        `You are Axon — ${process.env.AXON_USER_NAME || 'the user'}'s AI.\n\n` +
         `Generate a spoken morning briefing — 3–5 sharp sentences:\n` +
-        `1. Greet him briefly (${hour < 12 ? 'morning' : 'afternoon'})\n` +
-        `2. Name today's top 3 priorities — derived from his goals and calendar gaps, ` +
+        `1. Greet them briefly (${hour < 12 ? 'morning' : 'afternoon'})\n` +
+        `2. Name today's top 3 priorities — derived from their goals and calendar gaps, ` +
         `not just a list of events. Make each one specific and actionable.\n` +
-        `3. If he has open commitments (things he said he'd do), call out the most overdue one.\n` +
+        `3. If they have open commitments (things they said they'd do), call out the most overdue one.\n` +
         `Rules: no markdown, no lists, natural spoken sentences. Sharp and direct.\n` +
         `IMPORTANT: Keep the briefing under 400 words maximum — it must be completable in a single TTS call.`,
       messages: [{

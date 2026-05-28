@@ -57,7 +57,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'open_url',
     description: 'Open a specific website or URL in the default browser. ' +
-                 'Use when Isaac asks to open, go to, or visit a website.',
+                 'Use when the user asks to open, go to, or visit a website.',
     input_schema: {
       type:       'object',
       properties: { url: { type: 'string', description: 'Full URL including https://' } },
@@ -67,7 +67,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'web_search',
     description: 'Search the web for something — opens Google in the browser. ' +
-                 'Use when Isaac asks to search for, look up, or find something online.',
+                 'Use when the user asks to search for, look up, or find something online.',
     input_schema: {
       type:       'object',
       properties: { query: { type: 'string', description: 'Search query' } },
@@ -77,7 +77,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'open_folder',
     description: 'Open a folder in Finder (macOS) or File Explorer (Windows). ' +
-                 'Use when Isaac asks to open a folder, directory, or location on his PC. ' +
+                 'Use when the user asks to open a folder, directory, or location on their PC. ' +
                  `Common paths: Desktop, Documents, Downloads are under ${os.homedir()}.`,
     input_schema: {
       type:       'object',
@@ -88,7 +88,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'open_app',
     description: 'Launch an application. ' +
-                 'Use when Isaac asks to open, launch, or start a program. ' +
+                 'Use when the user asks to open, launch, or start a program. ' +
                  'Examples: "chrome", "spotify", "terminal", "calculator", "discord", "steam", "code" (VS Code).',
     input_schema: {
       type:       'object',
@@ -101,7 +101,7 @@ export const TOOLS: Anthropic.Tool[] = [
   // ── Goal management ──────────────────────────────────────────────────────────
   {
     name:        'goal_add',
-    description: 'Save a goal Isaac expresses. Use when he states something he wants to achieve, ' +
+    description: 'Save a goal the user expresses. Use when they state something he wants to achieve, ' +
                  'build, or become — whether short-term or life-level. Assign an impact score ' +
                  'based on how central it is to his mission (financial freedom, House Stallan, legacy).',
     input_schema: {
@@ -118,28 +118,28 @@ export const TOOLS: Anthropic.Tool[] = [
   },
   {
     name:        'goal_list',
-    description: 'Read all active goals, ranked by impact. Use when Isaac asks about his goals, ' +
+    description: 'Read all active goals, ranked by impact. Use when the user asks about his goals, ' +
                  'priorities, or what he should be working on.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name:        'goal_update_progress',
     description: 'Update a goal\'s actual completion progress (0–100%). ' +
-                 'Use when Isaac says he finished something, is halfway through, or gives a percentage. ' +
+                 'Use when the user says he finished something, is halfway through, or gives a percentage. ' +
                  'E.g. "I finished the landing page" → progress 100, "I\'m about halfway done" → 50.',
     input_schema: {
       type:       'object',
       properties: {
         goal_number: { type: 'number', description: '1-based position from goal_list' },
         progress:    { type: 'number', description: 'Completion percentage 0–100' },
-        reason:      { type: 'string', description: 'Brief reason for the update, e.g. "Isaac said he finished the landing page"' },
+        reason:      { type: 'string', description: 'Brief reason for the update, e.g. "the user said he finished the landing page"' },
       },
       required: ['goal_number', 'progress'],
     },
   },
   {
     name:        'goal_update',
-    description: 'Update a goal\'s status or impact score. Use when Isaac says a goal is done, ' +
+    description: 'Update a goal\'s status or impact score. Use when the user says a goal is done, ' +
                  'deprioritised, or wants to reprioritise.',
     input_schema: {
       type:       'object',
@@ -155,7 +155,7 @@ export const TOOLS: Anthropic.Tool[] = [
   // ── Commitment tracking ───────────────────────────────────────────────────────
   {
     name:        'commitment_log',
-    description: 'Log something Isaac committed to doing — anything he said he will, plans to, or needs to do. ' +
+    description: 'Log something the user committed to doing — anything they said they will, plans to, or needs to do. ' +
                  'Use proactively when you hear "I\'ll do X", "I\'m going to X", "I need to get X done".',
     input_schema: {
       type:       'object',
@@ -168,7 +168,7 @@ export const TOOLS: Anthropic.Tool[] = [
   },
   {
     name:        'commitment_done',
-    description: 'Mark a commitment as completed. Use when Isaac says he finished or did something he previously committed to.',
+    description: 'Mark a commitment as completed. Use when the user says he finished or did something he previously committed to.',
     input_schema: {
       type:       'object',
       properties: {
@@ -181,7 +181,7 @@ export const TOOLS: Anthropic.Tool[] = [
   // ── Autonomous actions ────────────────────────────────────────────────────────
   {
     name:        'schedule_block',
-    description: 'Create a calendar event on Isaac\'s Mac. Use when he asks to block time, schedule something, ' +
+    description: 'Create a calendar event on the user\'s Mac. Use when they ask to block time, schedule something, ' +
                  'or when Axon proactively suggests blocking time for a priority.',
     input_schema: {
       type:       'object',
@@ -196,8 +196,8 @@ export const TOOLS: Anthropic.Tool[] = [
   },
   {
     name:        'draft_email',
-    description: 'Open Mail.app on Isaac\'s Mac with a pre-filled email draft ready to review and send. ' +
-                 'Use when he asks to draft or send an email, or when Axon proactively drafts an outreach.',
+    description: 'Open Mail.app on the user\'s Mac with a pre-filled email draft ready to review and send. ' +
+                 'Use when they ask to draft or send an email, or when Axon proactively drafts an outreach.',
     input_schema: {
       type:       'object',
       properties: {
@@ -212,8 +212,8 @@ export const TOOLS: Anthropic.Tool[] = [
   // ── Tasks ─────────────────────────────────────────────────────────────────────
   {
     name:        'task_add',
-    description: 'Save a task or to-do item to Isaac\'s list. ' +
-                 'Use when Isaac says "add to my list", "remind me to", "remember to", ' +
+    description: 'Save a task or to-do item to the user\'s list. ' +
+                 'Use when the user says "add to my list", "remind me to", "remember to", ' +
                  'or any similar phrase indicating he wants something saved for later.',
     input_schema: {
       type:       'object',
@@ -225,8 +225,8 @@ export const TOOLS: Anthropic.Tool[] = [
   },
   {
     name:        'task_list',
-    description: 'Read all pending (incomplete) tasks from Isaac\'s list. ' +
-                 'Use when Isaac asks what\'s on his list, what he needs to do, or what he told you to remember.',
+    description: 'Read all pending (incomplete) tasks from the user\'s list. ' +
+                 'Use when the user asks what\'s on his list, what he needs to do, or what he told you to remember.',
     input_schema: {
       type:       'object',
       properties: {},
@@ -236,7 +236,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'task_done',
     description: 'Mark a task as done and remove it from the active list. ' +
-                 'Use when Isaac says he\'s finished something, crossed it off, or completed a task.',
+                 'Use when the user says he\'s finished something, crossed it off, or completed a task.',
     input_schema: {
       type:       'object',
       properties: {
@@ -251,7 +251,7 @@ export const TOOLS: Anthropic.Tool[] = [
   // ── Calendar ──────────────────────────────────────────────────────────────────
   {
     name:        'calendar_read',
-    description: "Read Isaac's calendar. Use when he asks what's on today, upcoming meetings, " +
+    description: "Read the user's calendar. Use when they ask what's on today, upcoming meetings, " +
                  'or when you need to check his schedule before making a recommendation.',
     input_schema: {
       type:       'object',
@@ -268,13 +268,13 @@ export const TOOLS: Anthropic.Tool[] = [
   // ── Gmail ─────────────────────────────────────────────────────────────────────
   {
     name:        'gmail_connect',
-    description: 'Connect Axon to Gmail via OAuth. Use when Isaac asks to connect his email, ' +
+    description: 'Connect Axon to Gmail via OAuth. Use when the user asks to connect his email, ' +
                  'or when an email action fails because Gmail is not authenticated.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name:        'email_read',
-    description: "Read recent emails from Isaac's Gmail inbox. Use when he asks what emails " +
+    description: "Read recent emails from the user's Gmail inbox. Use when they ask what emails " +
                  "he has, who's messaged him, or to find a specific email.",
     input_schema: {
       type:       'object',
@@ -293,7 +293,7 @@ export const TOOLS: Anthropic.Tool[] = [
   },
   {
     name:        'email_draft',
-    description: 'Draft an email to send. Saves it to Gmail Drafts and returns a preview for Isaac to approve. ' +
+    description: 'Draft an email to send. Saves it to Gmail Drafts and returns a preview for the user to approve. ' +
                  'After calling this, read the draft aloud and ask "Should I send it?" before calling email_send.',
     input_schema: {
       type:       'object',
@@ -307,7 +307,7 @@ export const TOOLS: Anthropic.Tool[] = [
   },
   {
     name:        'email_send',
-    description: 'Send the email that was just drafted. Only call this after Isaac has verbally confirmed ' +
+    description: 'Send the email that was just drafted. Only call this after the user has verbally confirmed ' +
                  'he wants to send it ("yes", "send it", "go ahead", etc.).',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
@@ -316,8 +316,8 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'weekly_review',
     description:
-      'Generate and speak Isaac\'s weekly performance review. ' +
-      'Use when he says "give me my weekly review", "how was my week", ' +
+      'Generate and speak the user\'s weekly performance review. ' +
+      'Use when they say "give me my weekly review", "how was my week", ' +
       '"weekly summary", or similar. Also runs automatically every Sunday at 6pm.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
@@ -326,8 +326,8 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'start_onboarding',
     description:
-      'Run the spoken setup interview to build Isaac\'s behavioural profile. ' +
-      'Use when Isaac says "let\'s do setup", "run onboarding", "set up Axon", ' +
+      'Run the spoken setup interview to build the user\'s behavioural profile. ' +
+      'Use when the user says "let\'s do setup", "run onboarding", "set up Axon", ' +
       'or any similar phrase indicating he wants to configure his profile.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
@@ -336,8 +336,8 @@ export const TOOLS: Anthropic.Tool[] = [
     name:        'write_soul',
     description: 'Read all of Axon\'s memory — every conversation and learned fact — ' +
                  'and generate personality.md: a soul document that defines how Axon thinks, ' +
-                 'communicates, and makes decisions when working with Isaac. ' +
-                 'Use when Isaac asks Axon to define its personality, write its soul, ' +
+                 'communicates, and makes decisions when working with the user. ' +
+                 'Use when the user asks Axon to define its personality, write its soul, ' +
                  'calibrate itself, or learn from past conversations.',
     input_schema: {
       type:       'object',
@@ -347,9 +347,9 @@ export const TOOLS: Anthropic.Tool[] = [
   },
   {
     name:        'run_command',
-    description: 'Run a PowerShell command on Isaac\'s PC. ' +
+    description: 'Run a PowerShell command on the user\'s PC. ' +
                  'Use for system tasks: creating files, moving things, checking system info, etc. ' +
-                 'Do NOT use this for anything destructive unless Isaac explicitly asks.',
+                 'Do NOT use this for anything destructive unless the user explicitly asks.',
     input_schema: {
       type:       'object',
       properties: {
@@ -369,7 +369,7 @@ export const TOOLS: Anthropic.Tool[] = [
       type:       'object',
       properties: {
         url:      { type: 'string',  description: 'Full URL to navigate to' },
-        headless: { type: 'boolean', description: 'false to show the browser window to Isaac (default true)' },
+        headless: { type: 'boolean', description: 'false to show the browser window to the user (default true)' },
       },
       required: ['url'],
     },
@@ -416,7 +416,7 @@ export const TOOLS: Anthropic.Tool[] = [
     name:        'app_control',
     description: 'Control any macOS application using the Accessibility API. ' +
                  'Can click buttons, type text, read content, navigate menus, and send keyboard shortcuts. ' +
-                 'Use when Isaac asks you to do something in a specific app.',
+                 'Use when the user asks you to do something in a specific app.',
     input_schema: {
       type:       'object',
       properties: {
@@ -457,7 +457,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'set_wake_word',
     description: 'Set a custom wake word for Axon. After calling this, Axon will respond to the new word immediately (no restart needed). ' +
-                 'Use when Isaac says "change your wake word to X" or "respond to X instead".',
+                 'Use when the user says "change your wake word to X" or "respond to X instead".',
     input_schema: {
       type:       'object',
       properties: {
@@ -470,8 +470,8 @@ export const TOOLS: Anthropic.Tool[] = [
   // ── Screen awareness ──────────────────────────────────────────────────────────
   {
     name:        'analyse_screen',
-    description: "Take a screenshot and analyse what is currently on Isaac's screen. " +
-                 'Use when Isaac asks about something he\'s looking at, when screen context would help ' +
+    description: "Take a screenshot and analyse what is currently on the user's screen. " +
+                 'Use when the user asks about something he\'s looking at, when screen context would help ' +
                  'answer a question, or when you want to understand what he\'s currently doing.',
     input_schema: {
       type:       'object',
@@ -484,7 +484,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'goal_log_activity',
     description: 'Log a completed life goal activity — gym session, run, sleep, social event, learning. ' +
-                 'Use when Isaac mentions going to the gym, finishing a run, completing a workout, ' +
+                 'Use when the user mentions going to the gym, finishing a run, completing a workout, ' +
                  'going to bed on time, finishing a book chapter, or any health/life goal activity.',
     input_schema: {
       type:       'object',
@@ -500,15 +500,15 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'get_weekly_plan',
     description: 'Read the current weekly life plan — gym times, deep work windows, wind-down schedule, soft lock times. ' +
-                 'Use when Isaac asks about his schedule, when to train, or when Axon needs to reference today\'s plan.',
+                 'Use when the user asks about his schedule, when to train, or when Axon needs to reference today\'s plan.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
   // ── Soft lock ─────────────────────────────────────────────────────────────────
   {
     name:        'activate_soft_lock',
-    description: 'Lock Isaac out of his computer — hides all windows and shows the soft lock screen. ' +
-                 'Use when Isaac says "lock me out", "I\'m going to train", "time to go", or when ' +
+    description: 'Lock the user out of their computer — hides all windows and shows the soft lock screen. ' +
+                 'Use when the user says "lock me out", "I\'m going to train", "time to go", or when ' +
                  'the weekly plan says it\'s gym/sleep time. Always confirm the reason and duration first.',
     input_schema: {
       type:       'object',
@@ -521,7 +521,7 @@ export const TOOLS: Anthropic.Tool[] = [
   },
   {
     name:        'deactivate_soft_lock',
-    description: 'Unlock the computer and restore all windows. Use when Isaac has returned from his commitment.',
+    description: 'Unlock the computer and restore all windows. Use when the user has returned from his commitment.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -533,14 +533,14 @@ export const TOOLS: Anthropic.Tool[] = [
   // ── Memory management ─────────────────────────────────────────────────────────
   {
     name:        'memory_review',
-    description: 'Review all stored facts about Isaac, remove noise (song lyrics, hallucinations, contradictions), and speak a summary of what was cleaned. ' +
-                 'Use when Isaac says "review your facts", "clean up your memory", "audit what you know", or similar.',
+    description: 'Review all stored facts about the user, remove noise (song lyrics, hallucinations, contradictions), and speak a summary of what was cleaned. ' +
+                 'Use when the user says "review your facts", "clean up your memory", "audit what you know", or similar.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name:        'memory_delete',
     description: 'Delete any facts from memory that match a search query. ' +
-                 'Use when Isaac says "forget that you think X", "delete facts about Y", or "remove anything about Z".',
+                 'Use when the user says "forget that you think X", "delete facts about Y", or "remove anything about Z".',
     input_schema: {
       type:       'object',
       properties: {
@@ -554,7 +554,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'sync_obsidian',
     description: 'Sync all of Axon\'s memory, goals, weekly plan, intervention log, and behaviour patterns to the Obsidian vault. ' +
-                 'Use when Isaac says "sync to Obsidian", "update Obsidian", or "sync my notes".',
+                 'Use when the user says "sync to Obsidian", "update Obsidian", or "sync my notes".',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
@@ -577,14 +577,14 @@ export const TOOLS: Anthropic.Tool[] = [
   // ── Phone monitoring ─────────────────────────────────────────────────────────
   {
     name:        'get_ios_shortcut_setup',
-    description: 'Return step-by-step instructions for connecting Isaac\'s iPhone to Axon via an iOS Shortcut. ' +
-                 'Use when Isaac asks "how do I connect my phone?", "set up phone tracking", or "iOS shortcut".',
+    description: 'Return step-by-step instructions for connecting the user\'s iPhone to Axon via an iOS Shortcut. ' +
+                 'Use when the user asks "how do I connect my phone?", "set up phone tracking", or "iOS shortcut".',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name:        'check_phone_activity',
-    description: 'Check what Isaac has been doing on his phone in the last 30 minutes. ' +
-                 'Use when he asks "what have I been doing on my phone?", "what\'s on my phone?", or "phone activity".',
+    description: 'Check what the user has been doing on his phone in the last 30 minutes. ' +
+                 'Use when they ask "what have I been doing on my phone?", "what\'s on my phone?", or "phone activity".',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
@@ -592,9 +592,9 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'capture_commitment',
     description:
-      'Capture a conditional commitment Isaac makes — "if I do X, then Y happens". ' +
+      'Capture a conditional commitment the user makes — "if I do X, then Y happens". ' +
       'Axon will automatically trigger the consequence when the condition is met. ' +
-      'Use when Isaac says "if I open YouTube during work hours, block me for 30 minutes" or similar.',
+      'Use when the user says "if I open YouTube during work hours, block me for 30 minutes" or similar.',
     input_schema: {
       type:       'object',
       properties: {
@@ -608,8 +608,8 @@ export const TOOLS: Anthropic.Tool[] = [
     name:        'set_accountability_contact',
     description:
       'Set an accountability contact (iPhone number or iMessage handle) who will be messaged ' +
-      'if Isaac goes off task for an extended period after ignoring multiple interventions. ' +
-      'Use when Isaac says "if I drift for too long, message [name]" or "set [name] as my accountability partner".',
+      'if the user goes off task for an extended period after ignoring multiple interventions. ' +
+      'Use when the user says "if I drift for too long, message [name]" or "set [name] as my accountability partner".',
     input_schema: {
       type:       'object',
       properties: {
@@ -621,15 +621,15 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'get_streak_summary',
     description:
-      'Get the current drift-free streak — how many consecutive days Isaac stayed on task. ' +
-      'Use when he asks "how is my streak?", "how many days clean?", or "what\'s my focus streak?".',
+      'Get the current drift-free streak — how many consecutive days the user stayed on task. ' +
+      'Use when they ask "how is my streak?", "how many days clean?", or "what\'s my focus streak?".',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name:        'get_drift_analysis',
     description:
       'Get a detailed breakdown of the current drift analysis — score, tier, confidence, and contributing factors. ' +
-      'Use when Isaac asks "why are you watching me?", "what\'s my drift score?", or "what are you seeing right now?".',
+      'Use when the user asks "why are you watching me?", "what\'s my drift score?", or "what are you seeing right now?".',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
@@ -637,7 +637,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name:        'speak_in_room',
     description: 'Play a spoken message on a smart speaker in a specific room via Home Assistant. ' +
-                 'Use when Isaac asks Axon to speak in a room, announce something, or play audio on a speaker.',
+                 'Use when the user asks Axon to speak in a room, announce something, or play audio on a speaker.',
     input_schema: {
       type:       'object',
       properties: {
@@ -667,7 +667,7 @@ export const TOOLS: Anthropic.Tool[] = [
   // ── Autonomous coding ─────────────────────────────────────────────────────────
   {
     name:        'run_coding_task',
-    description: 'Write and execute code autonomously to complete a task. Use when Isaac asks to build ' +
+    description: 'Write and execute code autonomously to complete a task. Use when the user asks to build ' +
                  'something, automate something, process data, or run a script. Axon will write the code, ' +
                  'run it, fix any errors, and repeat until it works.',
     input_schema: {
@@ -932,7 +932,7 @@ export async function executeTool(
 
       case 'email_draft': {
         if (!isGmailConnected()) {
-          return 'Gmail is not connected. Ask Isaac to connect Gmail first.';
+          return 'Gmail is not connected. Ask the user to connect Gmail first.';
         }
 
         const draft = await createDraft(input.to, input.subject, input.body);
@@ -943,7 +943,7 @@ export async function executeTool(
           `To: ${draft.to}\n` +
           `Subject: ${draft.subject}\n` +
           `Body: ${draft.body}\n\n` +
-          `Read the above to Isaac and ask if he wants to send it.`
+          `Read the above to the user and ask if he wants to send it.`
         );
       }
 
@@ -1087,12 +1087,12 @@ export async function executeTool(
               messages: [{
                 role:    'user',
                 content:
-                  `You are reviewing facts about Isaac Stallan for quality.\n` +
+                  `You are reviewing facts about the user for quality.\n` +
                   `Here are ${batch.length} facts (numbered):\n${numbered}\n\n` +
                   `Return ONLY a JSON array of the INDEX NUMBERS of facts that should be removed because they are:\n` +
                   `- Song lyrics or media dialogue\n` +
-                  `- Clearly hallucinated or not something Isaac said\n` +
-                  `- About someone else, not Isaac\n` +
+                  `- Clearly hallucinated or not something the user said\n` +
+                  `- About someone else, not the user\n` +
                   `- Nonsensical or corrupted\n\n` +
                   `Example response: [2, 7, 15]\n` +
                   `If none should be removed, return: []\n` +

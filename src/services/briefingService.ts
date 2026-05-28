@@ -74,7 +74,7 @@ async function runGoalElicitation(): Promise<void> {
 
   console.log('[Briefing] no goals found — eliciting');
   const message =
-    "Hey Isaac — I don't have any of your goals saved yet, and I need them to actually be useful to you. " +
+    `Hey ${process.env.AXON_USER_NAME || 'there'} — I don't have any of your goals saved yet, and I need them to actually be useful to you. ` +
     "What are you working toward right now? Give me the one or two things that matter most.";
 
   await speakThenListen(message);

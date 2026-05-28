@@ -195,10 +195,10 @@ async function evaluateProactiveComment(ctx: ScreenContext): Promise<void> {
         role:    'user',
         content:
           `${ARETICA_VISION}\n\n` +
-          `You are Axon watching Isaac's screen. You just saw: ${ctx.activeApp} — ${ctx.activity}.\n` +
+          `You are Axon watching the user's screen. You just saw: ${ctx.activeApp} — ${ctx.activity}.\n` +
           (ctx.visibleContent ? `Visible content: ${ctx.visibleContent.slice(0, 300)}\n` : '') +
           (ctx.notes ? `Notes: ${ctx.notes}\n` : '') +
-          `\nApply the Aretica Vision test: would commenting right now move Isaac closer to his fullest self?\n` +
+          `\nApply the Aretica Vision test: would commenting right now move the user closer to his fullest self?\n` +
           `If yes — generate ONE specific observation or question in 1-2 sentences. Sharp, accurate, direct.\n` +
           `If no — respond with exactly "SKIP".\n` +
           `Only comment if you have something genuinely useful to say. Silence is better than noise.\n` +
@@ -240,7 +240,7 @@ function hashCtxContent(ctx: ScreenContext): number {
 }
 
 // ── Reading detection ──────────────────────────────────────────────────────────
-// If Isaac is in a productive context (studying/deep_work) and the same content
+// If the user is in a productive context (studying/deep_work) and the same content
 // has been stable for 10+ minutes, offer a comprehension check.
 
 async function checkReadingDetection(ctx: ScreenContext): Promise<boolean> {

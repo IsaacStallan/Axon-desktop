@@ -168,13 +168,11 @@ export function buildFraming(ctx: FramingContext): PsychFraming {
 
   const techniqueText = techniques.map(t => TECHNIQUE_PROMPTS[t]).join('\n\n');
 
-  // Always available: Isaac's personal context
+  const _psyUser = process.env.AXON_USER_NAME || 'the user';
   const context =
-    `Isaac's identity context:\n` +
-    `- What he's building: House Stallan (his empire — financial freedom, legacy, family wealth)\n` +
-    `- At war with: unconscious living, dopamine distraction, the average life\n` +
+    `${_psyUser}'s identity context:\n` +
     `- Known avoidance: ${profile.avoidanceTasks.join(', ')}\n` +
-    `- Recovery message (his own words): "${profile.recoveryMessage.slice(0, 120)}..."`;
+    `- Recovery message (their own words): "${profile.recoveryMessage.slice(0, 120)}..."`;
 
   const instruction = `${context}\n\nPsychological framing to use:\n${techniqueText}`;
 
