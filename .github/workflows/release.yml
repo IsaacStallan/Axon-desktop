@@ -49,6 +49,7 @@ jobs:
           ARETICA_ELEVENLABS_VOICE_ID: ${{ secrets.ARETICA_ELEVENLABS_VOICE_ID }}
           ARETICA_SUPABASE_URL: ${{ secrets.ARETICA_SUPABASE_URL }}
           ARETICA_SUPABASE_ANON_KEY: ${{ secrets.ARETICA_SUPABASE_ANON_KEY }}
+          ARETICA_OPENAI_KEY: ${{ secrets.ARETICA_OPENAI_KEY }}
         run: |
           node scripts/inject-env.js
           echo "Keys written to buildConstants.ts:"

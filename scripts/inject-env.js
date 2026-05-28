@@ -9,6 +9,7 @@ const constants = {
   ARETICA_ELEVENLABS_VOICE_ID: process.env.ARETICA_ELEVENLABS_VOICE_ID || process.env.ELEVENLABS_VOICE_ID  || '',
   ARETICA_SUPABASE_URL:        process.env.ARETICA_SUPABASE_URL        || process.env.SUPABASE_URL         || '',
   ARETICA_SUPABASE_ANON_KEY:   process.env.ARETICA_SUPABASE_ANON_KEY   || process.env.SUPABASE_ANON_KEY    || '',
+  ARETICA_OPENAI_KEY:          process.env.ARETICA_OPENAI_KEY          || process.env.OPENAI_API_KEY       || '',
 };
 
 const output = `// AUTO-GENERATED — DO NOT EDIT
