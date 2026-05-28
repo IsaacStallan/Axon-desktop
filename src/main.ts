@@ -486,8 +486,6 @@ function createOnboardingWindow(): BrowserWindow {
       nodeIntegration:  false,
     },
   });
-  win.webContents.openDevTools({ mode: 'detach' });
-
   win.webContents.on('console-message', (_event, _level, message, line, sourceId) => {
     console.log(`[OnboardingRenderer] ${message} (${sourceId}:${line})`);
   });
