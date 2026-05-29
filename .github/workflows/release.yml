@@ -59,3 +59,44 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run publish -- --arch=universal
+
+      - name: Generate latest-mac.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          DMG_FILE="Axon.dmg"
+          ZIP_FILE="Axon-darwin-universal-${VERSION}.zip"
+
+          # Get file sizes
+          DMG_SIZE=$(stat -f%z "out/make/${DMG_FILE}" 2>/dev/null || stat -c%s "out/make/${DMG_FILE}" 2>/dev/null || echo "0")
+          ZIP_SIZE=$(stat -f%z "out/make/zip/darwin/universal/${ZIP_FILE}" 2>/dev/null || find out/make -name "*.zip" -exec stat -f%z {} \; 2>/dev/null | head -1 || echo "0")
+
+          # Get SHA512 of zip
+          ZIP_PATH=$(find out/make -name "*.zip" | head -1)
+          SHA512=$(shasum -a 512 "${ZIP_PATH}" | awk '{print $1}' | xxd -r -p | base64)
+
+          # Generate latest-mac.yml
+          cat > latest-mac.yml << EOF
+          version: ${VERSION}
+          files:
+            - url: ${ZIP_FILE}
+              sha512: ${SHA512}
+              size: ${ZIP_SIZE}
+          path: ${ZIP_FILE}
+          sha512: ${SHA512}
+          releaseDate: '$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")'
+          EOF
+
+          echo "Generated latest-mac.yml:"
+          cat latest-mac.yml
+
+          # Upload to GitHub release
+          gh release upload "v${VERSION}" latest-mac.yml --clobber
+
+      - name: Also upload latest-mac.yml as top-level asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release upload "v${VERSION}" latest-mac.yml --clobber || true
