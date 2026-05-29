@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('axon', {
     ipcRenderer.on('axon:stats', (_e, data) => cb(data)),
   onLog: (cb: (data: unknown) => void) =>
     ipcRenderer.on('axon:log', (_e, data) => cb(data)),
+  onNotification: (cb: (data: unknown) => void) =>
+    ipcRenderer.on('axon:notification', (_e, data) => cb(data)),
   tapOrb:        () => ipcRenderer.send('orb:tap'),
   ready:         () => ipcRenderer.send('orb:ready'),
   interruptAxon: () => ipcRenderer.send('axon:interrupt'),

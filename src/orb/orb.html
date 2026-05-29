@@ -307,6 +307,31 @@
     }
 
     #mini-waveform { display: block; -webkit-app-region: no-drag; flex-shrink: 0; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    #notification-area {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+    }
+
+    .orb-notification {
+      padding: 8px 10px;
+      font-size: 10px;
+      letter-spacing: 0.4px;
+      line-height: 1.4;
+      border: 1px solid;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .orb-notification.info   { border-color: var(--border); color: var(--text); }
+    .orb-notification.urgent { border-color: #FF4444; color: #FF6666; }
   </style>
 </head>
 <body class="idle">
@@ -352,6 +377,9 @@
 
     <!-- HUD view -->
     <div id="hud-view" class="tab-view">
+
+      <!-- Notifications (free-tier orb interventions) -->
+      <div id="notification-area"></div>
 
       <!-- Focus bar -->
       <div id="focus-bar-section">

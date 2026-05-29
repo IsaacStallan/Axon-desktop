@@ -3,7 +3,7 @@ import { BrowserWindow } from 'electron';
 import { screenEvents }               from './screenAwareness';
 import type { ScreenContext }          from './screenAwareness';
 import { triggerContentQualityCheck, flagDistractionContext } from './interventionDecider';
-import { getTimeOnCurrentApp } from './windowMonitor';
+import { getTimeOnCurrentApp, getCurrentApp } from './windowMonitor';
 import { speak, isSpeaking }          from './elevenLabsService';
 import { isConversationActive }        from './conversationService';
 import { isCurrentlyListening }        from './voiceListener';
@@ -13,6 +13,7 @@ import {
   releaseSpeakerLock,
 } from './deviceCoordinator';
 import { ARETICA_VISION } from './areticaVision';
+import * as tierService   from './tierService';
 
 console.log('[ScreenObserver] module loaded');
 
@@ -348,15 +349,38 @@ export function getLastChangeScore(): number {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-export function startScreenObserver(): void {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const tierService = require('./tierService');
-  if (!tierService.isFeatureEnabled('screenAwarenessEnabled')) {
-    console.log('[ScreenObserver] disabled — requires Pro tier');
-    return;
-  }
+function startLiteMode(): void {
+  console.log('[ScreenObserver] free tier — lite mode (app monitoring, 60s intervals)');
+  setInterval(() => {
+    const app = getCurrentApp() as { name: string; label: string; durationMins: number };
+    const productivitySignal: 'productive' | 'distracted' | 'neutral' =
+      app.label === 'positive' ? 'productive' :
+      app.label === 'negative' ? 'distracted' : 'neutral';
+    const syntheticCtx = {
+      activeApp:          app.name,
+      activity:           `Using ${app.name}`,
+      productivitySignal,
+      visibleContent:     '',
+      notes:              '',
+    } as ScreenContext;
+    onScreenChanged(syntheticCtx);
+  }, 60_000);
+}
+
+function startFullMode(): void {
   screenEvents.on('screen:changed', (ctx: ScreenContext) => {
     onScreenChanged(ctx);
   });
   console.log('[ScreenObserver] listening for screen:changed events');
+}
+
+export function startScreenObserver(): void {
+  const limits = tierService.getLimits();
+  if (limits.screenAwarenessEnabled) {
+    startFullMode();
+  } else if (limits.appMonitoringEnabled) {
+    startLiteMode();
+  } else {
+    console.log('[ScreenObserver] disabled — monitoring not available on this tier');
+  }
 }

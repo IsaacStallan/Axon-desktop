@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { execSync } from 'child_process';
-import { app } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import fs   from 'fs';
 import path from 'path';
 import { getCurrentApp, getSessionLog } from './windowMonitor';
@@ -712,9 +712,17 @@ Bad interventions (never do these):
   const message = await routeIntervention(prompt, decision.interventionTier ?? 1, decision.modelTier);
   if (!message || message.trim().toUpperCase() === 'SKIP') return;
 
-  // Tier: voice gate — free tier gets text log only, no TTS
+  // Tier: voice gate — free tier gets orb notification instead of TTS
   if (!tierService.canSpeak()) {
-    console.log('[CognitiveEngine] free tier — text-only intervention:', message);
+    console.log('[CognitiveEngine] free tier — sending orb notification');
+    const remaining = tierService.getRemainingInterventions();
+    const notifMsg = remaining === 1
+      ? `${message} — Upgrade to Core for unlimited interventions`
+      : message;
+    const notifType = (decision.interventionTier ?? 1) >= 3 ? 'urgent' : 'info';
+    BrowserWindow.getAllWindows()
+      .filter(w => !w.isDestroyed())
+      .forEach(w => w.webContents.send('axon:notification', { message: notifMsg, type: notifType }));
     tierService.recordIntervention();
     return;
   }

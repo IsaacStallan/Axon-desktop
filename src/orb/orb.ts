@@ -8,6 +8,7 @@ declare global {
       onMessage:        (cb: (msg: string) => void) => void;
       onStats:          (cb: (data: unknown) => void) => void;
       onLog:            (cb: (data: unknown) => void) => void;
+      onNotification:   (cb: (data: unknown) => void) => void;
       onActivityUpdate: (cb: (activity: string) => void) => void;
       tapOrb:           () => void;
       ready:            () => void;
@@ -40,6 +41,11 @@ interface LogEntry {
   time:    string;
   type:    string;
   message: string;
+}
+
+interface OrbNotification {
+  message: string;
+  type:    'info' | 'urgent';
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -158,6 +164,27 @@ window.axon.onLog((data: unknown) => {
   while (list.children.length > 50) {
     list.removeChild(list.lastChild!);
   }
+});
+
+// ── Notifications (free-tier orb interventions) ──────────────────────────────
+
+window.axon.onNotification((data: unknown) => {
+  const notif = data as OrbNotification;
+  const area  = document.getElementById('notification-area');
+  if (!area) return;
+
+  const div = document.createElement('div');
+  div.className = `orb-notification ${notif.type}`;
+  div.textContent = notif.message;
+  area.prepend(div);
+
+  while (area.children.length > 3) {
+    area.removeChild(area.lastChild!);
+  }
+
+  setTimeout(() => {
+    if (div.parentNode === area) area.removeChild(div);
+  }, 30_000);
 });
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
