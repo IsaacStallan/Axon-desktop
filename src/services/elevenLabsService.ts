@@ -58,6 +58,23 @@ const TMP_FILE    = join(tmpdir(), 'axon_tts.wav');
 
 export let isSpeaking = false;
 
+// ── Speech queue ──────────────────────────────────────────────────────────────
+
+let speechQueue: Array<{
+  text:     string;
+  priority: 'low' | 'normal' | 'high' | 'critical';
+  resolve:  () => void;
+}> = [];
+
+export function isSpeakingNow(): boolean {
+  return isSpeaking;
+}
+
+export function clearSpeechQueue(): void {
+  speechQueue = [];
+  console.log('[ElevenLabs] speech queue cleared');
+}
+
 // ── Interrupt state ───────────────────────────────────────────────────────────
 
 let currentPlayback:  { kill: () => void } | null = null;
@@ -319,10 +336,53 @@ async function playAudioFile(filePath: string): Promise<void> {
   });
 }
 
-// ── Public speak() — single API call → one MP3 → one playback ────────────────
-// Sends the full sanitised text as one request so there are no inter-chunk gaps.
+// ── Public speak() — priority-queued, serialised playback ────────────────────
 
-export async function speak(text: string): Promise<void> {
+export async function speak(
+  text:     string,
+  priority: 'low' | 'normal' | 'high' | 'critical' = 'normal',
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (priority === 'critical') {
+      speechQueue = [];
+      speechQueue.unshift({ text, priority, resolve });
+    } else if (priority === 'high') {
+      speechQueue.unshift({ text, priority, resolve });
+    } else {
+      speechQueue.push({ text, priority, resolve });
+    }
+
+    if (!isSpeaking) {
+      processQueue();
+    }
+  });
+}
+
+async function processQueue(): Promise<void> {
+  if (isSpeaking || speechQueue.length === 0) return;
+
+  isSpeaking = true;
+  const item = speechQueue.shift()!;
+
+  console.log(`[ElevenLabs] speaking (queue: ${speechQueue.length} remaining): "${item.text.slice(0, 50)}..."`);
+
+  try {
+    await speakImmediate(item.text);
+  } catch (err) {
+    console.error('[ElevenLabs] speak error:', err);
+  } finally {
+    isSpeaking = false;
+    item.resolve();
+
+    if (speechQueue.length > 0) {
+      setTimeout(processQueue, 400);
+    }
+  }
+}
+
+// speakImmediate — single API call → one MP3 → one playback.
+// Called only by processQueue(); not exported.
+async function speakImmediate(text: string): Promise<void> {
   console.log('[ElevenLabs] speak:', text.slice(0, 80));
 
   if (!API_KEY || !VOICE_ID) {

@@ -33,7 +33,7 @@ import {
   logIntervention,
   getSystemScreenTimeToday,
 } from './behaviourModel';
-import { speak, isSpeaking, isAirPodsConnected, getPreferredOutputDevice } from './elevenLabsService';
+import { speak, isSpeaking, isSpeakingNow, isAirPodsConnected, getPreferredOutputDevice } from './elevenLabsService';
 import { readPCState, isPCActive, getPCDriftContext, PCNodeState } from './pcNodeSync';
 import { isConversationActive }         from './conversationService';
 import { acquireSpeakerLock, releaseSpeakerLock } from './deviceCoordinator';
@@ -609,7 +609,12 @@ async function routeIntervention(
 // ── Execute speak ──────────────────────────────────────────────────────────────
 
 async function executeSpeak(obs: ObservationState, decision: CognitiveDecision): Promise<void> {
-  if (isSpeaking || isConversationActive()) return;
+  // Don't queue interventions if already speaking — they'll be stale by the time they play
+  if (isSpeakingNow()) {
+    console.log('[CognitiveEngine] already speaking — skipping intervention');
+    return;
+  }
+  if (isConversationActive()) return;
 
   // Tier: daily intervention limit
   if (!tierService.canIntervene()) {

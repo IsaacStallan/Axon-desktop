@@ -90,7 +90,7 @@ export async function runDiscoveryConversation(userName: string): Promise<void> 
   try {
     const opening = `Hey ${userName}. Before I start watching how you work, I want to understand what you're actually trying to do. What are you working on right now?`;
     updateOrbState('speaking', 'Getting to know you...');
-    await elevenLabsService.speak(opening);
+    await elevenLabsService.speak(opening, 'high');
 
     let turns = 0;
 
@@ -112,9 +112,9 @@ export async function runDiscoveryConversation(userName: string): Promise<void> 
         turns--; // don't burn a turn on a missed/cut-off response
         updateOrbState('speaking', 'Getting to know you...');
         if (!userResponse || userResponse.trim().length < 2) {
-          await elevenLabsService.speak("I didn't catch that — go ahead.");
+          await elevenLabsService.speak("I didn't catch that — go ahead.", 'high');
         } else {
-          await elevenLabsService.speak("Keep going — I'm listening.");
+          await elevenLabsService.speak("Keep going — I'm listening.", 'high');
         }
         continue;
       }
@@ -131,7 +131,7 @@ export async function runDiscoveryConversation(userName: string): Promise<void> 
       }
 
       updateOrbState('speaking', 'Getting to know you...');
-      await elevenLabsService.speak(parsed.message);
+      await elevenLabsService.speak(parsed.message, 'high');
       history.push({ role: 'assistant', content: parsed.message });
 
       if (parsed.done) {
