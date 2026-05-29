@@ -60,23 +60,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run publish -- --arch=universal
 
-      - name: Generate latest-mac.yml
+      - name: Generate and upload latest-mac.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          DMG_FILE="Axon.dmg"
           ZIP_FILE="Axon-darwin-universal-${VERSION}.zip"
+          RELEASE_TAG="v${VERSION}"
 
-          # Get file sizes
-          DMG_SIZE=$(stat -f%z "out/make/${DMG_FILE}" 2>/dev/null || stat -c%s "out/make/${DMG_FILE}" 2>/dev/null || echo "0")
-          ZIP_SIZE=$(stat -f%z "out/make/zip/darwin/universal/${ZIP_FILE}" 2>/dev/null || find out/make -name "*.zip" -exec stat -f%z {} \; 2>/dev/null | head -1 || echo "0")
+          echo "Downloading zip to compute sha512..."
+          gh release download "${RELEASE_TAG}" --pattern "*.zip" --dir /tmp/axon-release
 
-          # Get SHA512 of zip
-          ZIP_PATH=$(find out/make -name "*.zip" | head -1)
-          SHA512=$(shasum -a 512 "${ZIP_PATH}" | awk '{print $1}' | xxd -r -p | base64)
+          ZIP_PATH=$(find /tmp/axon-release -name "*.zip" | head -1)
+          ZIP_SIZE=$(stat -f%z "${ZIP_PATH}" 2>/dev/null || stat -c%s "${ZIP_PATH}")
+          SHA512=$(shasum -a 512 "${ZIP_PATH}" | awk '{print $1}' | xxd -r -p | base64 | tr -d '\n')
 
-          # Generate latest-mac.yml
+          echo "SHA512: ${SHA512}"
+          echo "Size: ${ZIP_SIZE}"
+
           cat > latest-mac.yml << EOF
           version: ${VERSION}
           files:
@@ -91,12 +92,5 @@ jobs:
           echo "Generated latest-mac.yml:"
           cat latest-mac.yml
 
-          # Upload to GitHub release
-          gh release upload "v${VERSION}" latest-mac.yml --clobber
-
-      - name: Also upload latest-mac.yml as top-level asset
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          gh release upload "v${VERSION}" latest-mac.yml --clobber || true
+          gh release upload "${RELEASE_TAG}" latest-mac.yml --clobber
+          echo "Uploaded latest-mac.yml to ${RELEASE_TAG}"
