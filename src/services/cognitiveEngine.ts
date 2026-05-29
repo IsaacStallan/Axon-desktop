@@ -712,56 +712,63 @@ Bad interventions (never do these):
   const message = await routeIntervention(prompt, decision.interventionTier ?? 1, decision.modelTier);
   if (!message || message.trim().toUpperCase() === 'SKIP') return;
 
-  // Tier: voice gate — free tier gets orb notification instead of TTS
-  if (!tierService.canSpeak()) {
-    console.log('[CognitiveEngine] free tier — sending orb notification');
-    const remaining = tierService.getRemainingInterventions();
-    const notifMsg = remaining === 1
-      ? `${message} — Upgrade to Core for unlimited interventions`
-      : message;
+  if (tierService.canVoiceIntervene()) {
+    if (!(await acquireSpeakerLock(60_000))) {
+      console.log('[CognitiveEngine] speaker lock held — skipping');
+      return;
+    }
+
+    try {
+      setLastProactiveMessage(message,
+        decision.interventionTier === 3 ? 'recovery' :
+        decision.interventionTier === 2 ? 'early'    : 'predictive',
+      );
+
+      await speak(message);
+      recordInterventionFired();
+      tierService.recordVoiceIntervention();
+      tierService.recordIntervention();
+
+      // Fix 1 & Fix 6: update cooldown timestamp and daily budget
+      lastProactiveSpeakAt = Date.now();
+      dailySpeakBudget.count++;
+      console.log(`[CognitiveEngine] daily speaks: ${dailySpeakBudget.count}/${dailySpeakBudget.maxPerDay}`);
+
+      logIntervention({
+        timestamp:     new Date().toISOString(),
+        type:          decision.interventionTier === 3 ? 'recovery' :
+                       decision.interventionTier === 2 ? 'early'    : 'predictive',
+        message,
+        appContext:    obs.activeApp,
+        driftMinutes:  obs.activeAppMinutes,
+        userResponded: false,
+      });
+
+      if (onTrigger && !isConversationActive()) {
+        onTrigger();
+      }
+
+      // After last free voice intervention — mention upgrade naturally
+      if (tierService.getTier() === 'free' && tierService.getRemainingInterventions() === 0) {
+        setTimeout(() => {
+          void speak("That's your 3 for today. Upgrade to Core at aretica.ai for unlimited.");
+        }, 3_000);
+      }
+    } finally {
+      await releaseSpeakerLock();
+    }
+  } else {
+    // Voice quota used — fall back to orb text notification
+    console.log('[CognitiveEngine] voice quota reached — sending orb notification');
     const notifType = (decision.interventionTier ?? 1) >= 3 ? 'urgent' : 'info';
     BrowserWindow.getAllWindows()
       .filter(w => !w.isDestroyed())
-      .forEach(w => w.webContents.send('axon:notification', { message: notifMsg, type: notifType }));
+      .forEach(w => w.webContents.send('axon:notification', {
+        message,
+        type:      notifType,
+        timestamp: new Date().toLocaleTimeString(),
+      }));
     tierService.recordIntervention();
-    return;
-  }
-
-  if (!(await acquireSpeakerLock(60_000))) {
-    console.log('[CognitiveEngine] speaker lock held — skipping');
-    return;
-  }
-
-  try {
-    setLastProactiveMessage(message,
-      decision.interventionTier === 3 ? 'recovery' :
-      decision.interventionTier === 2 ? 'early'    : 'predictive',
-    );
-
-    await speak(message);
-    recordInterventionFired();
-    tierService.recordIntervention();
-
-    // Fix 1 & Fix 6: update cooldown timestamp and daily budget
-    lastProactiveSpeakAt = Date.now();
-    dailySpeakBudget.count++;
-    console.log(`[CognitiveEngine] daily speaks: ${dailySpeakBudget.count}/${dailySpeakBudget.maxPerDay}`);
-
-    logIntervention({
-      timestamp:     new Date().toISOString(),
-      type:          decision.interventionTier === 3 ? 'recovery' :
-                     decision.interventionTier === 2 ? 'early'    : 'predictive',
-      message,
-      appContext:    obs.activeApp,
-      driftMinutes:  obs.activeAppMinutes,
-      userResponded: false,
-    });
-
-    if (onTrigger && !isConversationActive()) {
-      onTrigger();
-    }
-  } finally {
-    await releaseSpeakerLock();
   }
 }
 

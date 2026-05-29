@@ -13,15 +13,17 @@ interface TierLimits {
   phoneMonitoringEnabled:   boolean;
   maxDevices:               number;
   priorityRouting:          boolean;
-  appMonitoringEnabled:     boolean;
-  driftDetectionEnabled:    boolean;
+  appMonitoringEnabled:      boolean;
+  driftDetectionEnabled:     boolean;
   basicInterventionsEnabled: boolean;
+  voiceInterventionsPerDay:  number;
+  morningBriefingEnabled:    boolean;
 }
 
 const TIER_LIMITS: Record<UserTier, TierLimits> = {
   free: {
     maxDailyInterventions:    3,
-    voiceEnabled:             false,
+    voiceEnabled:             true,
     calendarEnabled:          false,
     emailEnabled:             false,
     screenAwarenessEnabled:   false,
@@ -33,6 +35,8 @@ const TIER_LIMITS: Record<UserTier, TierLimits> = {
     appMonitoringEnabled:     true,
     driftDetectionEnabled:    true,
     basicInterventionsEnabled: true,
+    voiceInterventionsPerDay: 3,
+    morningBriefingEnabled:   false,
   },
   core: {
     maxDailyInterventions:    999,
@@ -48,6 +52,8 @@ const TIER_LIMITS: Record<UserTier, TierLimits> = {
     appMonitoringEnabled:     true,
     driftDetectionEnabled:    true,
     basicInterventionsEnabled: true,
+    voiceInterventionsPerDay: 999,
+    morningBriefingEnabled:   true,
   },
   pro: {
     maxDailyInterventions:    999,
@@ -63,6 +69,8 @@ const TIER_LIMITS: Record<UserTier, TierLimits> = {
     appMonitoringEnabled:     true,
     driftDetectionEnabled:    true,
     basicInterventionsEnabled: true,
+    voiceInterventionsPerDay: 999,
+    morningBriefingEnabled:   true,
   },
   team: {
     maxDailyInterventions:    999,
@@ -78,6 +86,8 @@ const TIER_LIMITS: Record<UserTier, TierLimits> = {
     appMonitoringEnabled:     true,
     driftDetectionEnabled:    true,
     basicInterventionsEnabled: true,
+    voiceInterventionsPerDay: 999,
+    morningBriefingEnabled:   true,
   },
   enterprise: {
     maxDailyInterventions:    999,
@@ -93,11 +103,14 @@ const TIER_LIMITS: Record<UserTier, TierLimits> = {
     appMonitoringEnabled:     true,
     driftDetectionEnabled:    true,
     basicInterventionsEnabled: true,
+    voiceInterventionsPerDay: 999,
+    morningBriefingEnabled:   true,
   },
 };
 
 let currentTier: UserTier        = 'free';
 let dailyInterventionCount       = 0;
+let dailyVoiceInterventionCount  = 0;
 let lastResetDate                = '';
 
 export async function initTierService(): Promise<void> {
@@ -159,7 +172,8 @@ export function canSpeak(): boolean {
 export function canIntervene(): boolean {
   const today = new Date().toDateString();
   if (lastResetDate !== today) {
-    dailyInterventionCount = 0;
+    dailyInterventionCount      = 0;
+    dailyVoiceInterventionCount = 0;
     lastResetDate = today;
   }
   return dailyInterventionCount < getLimits().maxDailyInterventions;
@@ -174,6 +188,22 @@ export function getRemainingInterventions(): number {
   const max = getLimits().maxDailyInterventions;
   if (max === 999) return 999;
   return Math.max(0, max - dailyInterventionCount);
+}
+
+export function canVoiceIntervene(): boolean {
+  const today = new Date().toDateString();
+  if (lastResetDate !== today) {
+    dailyInterventionCount      = 0;
+    dailyVoiceInterventionCount = 0;
+    lastResetDate = today;
+  }
+  const limits = getLimits();
+  return dailyVoiceInterventionCount < (limits.voiceInterventionsPerDay || 3);
+}
+
+export function recordVoiceIntervention(): void {
+  dailyVoiceInterventionCount++;
+  console.log(`[TierService] voice intervention ${dailyVoiceInterventionCount}/${getLimits().voiceInterventionsPerDay} today`);
 }
 
 export function isFeatureEnabled(feature: keyof TierLimits): boolean {
