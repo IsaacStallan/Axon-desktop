@@ -1,6 +1,6 @@
 {
   "name": "axon-desktop",
-  "version": "1.0.21-beta",
+  "version": "1.0.22-beta",
   "description": "Axon — ambient AI presence for Windows",
   "main": ".webpack/main",
   "scripts": {
@@ -27,7 +27,10 @@
       "repo": "Axon-desktop"
     },
     "mac": {
-      "target": ["dmg", "zip"]
+      "target": [
+        "dmg",
+        "zip"
+      ]
     }
   },
   "keywords": [],
