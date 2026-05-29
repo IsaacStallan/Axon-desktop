@@ -77,7 +77,8 @@ module.exports = {
           name:  'Axon-desktop'
         },
         prerelease: true,
-        draft: false
+        draft: false,
+        generateReleaseNotes: false,
       }
     }
   ],

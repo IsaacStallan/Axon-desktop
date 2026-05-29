@@ -25,6 +25,9 @@
       "provider": "github",
       "owner": "IsaacStallan",
       "repo": "Axon-desktop"
+    },
+    "mac": {
+      "target": ["dmg", "zip"]
     }
   },
   "keywords": [],
