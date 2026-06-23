@@ -7,7 +7,12 @@
     "start": "electron-forge start",
     "build": "electron-forge make",
     "make": "electron-forge make",
+    "make:universal": "electron-forge make --arch universal",
+    "make:arm64": "electron-forge make --arch arm64",
+    "make:x64": "electron-forge make --arch x64",
     "package": "electron-forge package",
+    "package:universal": "electron-forge package --arch universal",
+    "package:arm64": "electron-forge package --arch arm64",
     "publish": "electron-forge publish",
     "deploy": "wrangler deploy",
     "preview": "wrangler dev",
@@ -18,7 +23,8 @@
     "release": "bash scripts/release.sh",
     "inject-env": "node scripts/inject-env.js",
     "prebuild": "node scripts/inject-env.js",
-    "prepackage": "node scripts/inject-env.js"
+    "prepackage": "node scripts/inject-env.js",
+    "verify-archs": "node scripts/verify-archs.js"
   },
   "build": {
     "publish": {
@@ -28,8 +34,8 @@
     },
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
       ]
     }
   },
